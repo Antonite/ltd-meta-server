@@ -3,6 +3,7 @@ package server
 import (
 	"database/sql"
 
+	"github.com/antonite/ltd-meta-server/benchmark"
 	"github.com/antonite/ltd-meta-server/db"
 	"github.com/antonite/ltd-meta-server/ltdapi"
 	"github.com/antonite/ltd-meta-server/mercenary"
@@ -10,8 +11,9 @@ import (
 )
 
 type Server struct {
-	db  *sql.DB
-	Api *ltdapi.LtdApi
+	db      *sql.DB
+	Api     *ltdapi.LtdApi
+	Version string
 }
 
 func New() (*Server, error) {
@@ -22,10 +24,15 @@ func New() (*Server, error) {
 
 	api := ltdapi.New()
 
-	return &Server{db: database, Api: api}, nil
+	v, err := api.GetLatestVersion()
+	if err != nil {
+		return nil, err
+	}
+
+	return &Server{db: database, Api: api, Version: v}, nil
 }
 
-func (s *Server) GetUnits() (map[string]unit.Unit, error) {
+func (s *Server) GetUnits() (map[string]*unit.Unit, error) {
 	return unit.GetAll(s.db)
 }
 
@@ -39,6 +46,10 @@ func (s *Server) GetMercs() (map[string]mercenary.Mercenary, error) {
 
 func (s *Server) SaveMerc(m mercenary.Mercenary) error {
 	return m.Save(s.db)
+}
+
+func (s *Server) SaveBenchmark(b benchmark.Benchmark) error {
+	return b.Save(s.db)
 }
 
 func (s *Server) CreateTable(name string) error {

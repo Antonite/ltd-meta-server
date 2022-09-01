@@ -1,19 +1,21 @@
 package main
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
+	"github.com/antonite/ltd-meta-server/benchmark"
 	"github.com/antonite/ltd-meta-server/ltdapi"
 	"github.com/antonite/ltd-meta-server/mercenary"
 	"github.com/antonite/ltd-meta-server/server"
 	"github.com/antonite/ltd-meta-server/unit"
+	"github.com/antonite/ltd-meta-server/util"
 )
 
 const vers = "9.07.2"
+const waves = 10
 
 func main() {
 	srv, err := server.New()
@@ -32,6 +34,12 @@ func main() {
 		fmt.Println(err)
 	}
 	fmt.Println("finished table generation")
+
+	fmt.Println("starting initial benchmark")
+	if err := initialBenchMark(srv); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("finished initial benchmark")
 }
 
 func generateTables(srv *server.Server) error {
@@ -40,10 +48,12 @@ func generateTables(srv *server.Server) error {
 		return err
 	}
 
-	waves := 10
-	for k := range savedUnits {
+	for k, v := range savedUnits {
 		n := strings.TrimSuffix(k, "unit_id")
 		for i := 1; i <= waves; i++ {
+			if i == 1 && v.TotalValue >= 273 {
+				continue
+			}
 			tableName := fmt.Sprintf("%swave_%v", n, i)
 			if err := srv.CreateTable(tableName); err != nil {
 				return err
@@ -64,91 +74,130 @@ func generateUnits(srv *server.Server) error {
 		return err
 	}
 
-	// special hardcoded units
-	if _, ok := savedUnits["hell_raiser_buffed_unit_id"]; !ok {
-		newUnit := unit.Unit{
-			ID:         "hell_raiser_buffed_unit_id",
-			Name:       "Hell Raiser Buffed",
-			IconPath:   "Icons/HellRaiser.png",
-			TotalValue: 215,
-			Version:    "9.07.2",
+	units := make(chan ltdapi.Unit)
+	errChan := make(chan error, 1)
+	go srv.Api.RequestUnits(srv.Version, units, errChan)
+	for u := range units {
+		if u.CategoryClass != "Standard" && !util.IsSpecialUnit(u.UnitId) {
+			continue
 		}
-		if err := srv.SaveUnit(newUnit); err != nil {
-			return err
+		switch u.UnitClass {
+		case "Mercenary":
+			if _, ok := savedMercs[u.UnitId]; !ok {
+				if u.MythiumCost == "" {
+					return errors.New(fmt.Sprintf("got a merc with empty myth cost: %s", u.UnitId))
+				}
+				cost, err := strconv.Atoi(u.MythiumCost)
+				if err != nil {
+					return err
+				}
+				newMerc := mercenary.Mercenary{
+					ID:          u.UnitId,
+					Name:        u.Name,
+					IconPath:    u.IconPath,
+					MythiumCost: cost,
+					Version:     u.Version,
+				}
+				if err := srv.SaveMerc(newMerc); err != nil {
+					return err
+				}
+			}
+		case "Fighter":
+			if _, ok := savedUnits[u.UnitId]; !ok {
+				if u.TotalValue == "" {
+					return errors.New(fmt.Sprintf("got a unit with empty total value: %s", u.UnitId))
+				}
+				val, err := strconv.Atoi(u.TotalValue)
+				if err != nil {
+					return errors.New(fmt.Sprintf("failed to convert unit total value: %s", u.UnitId))
+				}
+				newUnit := unit.Unit{
+					ID:         u.UnitId,
+					Name:       u.Name,
+					IconPath:   u.IconPath,
+					TotalValue: val,
+					Version:    u.Version,
+				}
+				if err := srv.SaveUnit(newUnit); err != nil {
+					return err
+				}
+			}
 		}
 	}
-	if _, ok := savedUnits["pack_rat_nest_unit_id"]; !ok {
-		newUnit := unit.Unit{
-			ID:         "pack_rat_nest_unit_id",
-			Name:       "Pack Rat Hunting",
-			IconPath:   "Icons/PackRat(Footprints).png",
-			TotalValue: 0,
-			Version:    "9.07.2",
-		}
-		if err := srv.SaveUnit(newUnit); err != nil {
-			return err
+	for err := range errChan {
+		return err
+	}
+
+	return nil
+}
+
+func initialBenchMark(srv *server.Server) error {
+	allUnits, err := srv.GetUnits()
+	if err != nil {
+		return err
+	}
+
+	benchmarks := make(map[string]benchmark.Benchmark)
+	for u := range allUnits {
+		for i := 1; i <= waves; i++ {
+			bn := util.GenerateUnitTableName(u, i)
+			b := benchmark.Benchmark{
+				Wave:   i,
+				UnitId: u,
+				Value:  0,
+			}
+			benchmarks[bn] = b
 		}
 	}
 
-	off := 0
-	for {
-		fmt.Printf("offset: %v\n", off)
-		resp, err := srv.Api.RequestUnits(off, vers)
-		if err != nil || (resp.StatusCode != 200 && resp.StatusCode != 404) {
-			fmt.Println(resp)
-			return errors.New("failed to retrieve units")
-		} else if resp.StatusCode == 404 {
-			return nil
+	// get games
+	date := "2022-08-31%2018:00:00.000Z"
+	games := make(chan ltdapi.Game)
+	errChan := make(chan error, 1)
+	go srv.Api.RequestGames(date, games, errChan)
+	for g := range games {
+		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
+			continue
 		}
-
-		units := []ltdapi.Unit{}
-		defer resp.Body.Close()
-		decoder := json.NewDecoder(resp.Body)
-		if err = decoder.Decode(&units); err != nil {
-			return err
-		}
-
-		for _, u := range units {
-			if u.CategoryClass != "Standard" {
+		for _, player := range g.PlayersData {
+			if player.Cross {
 				continue
 			}
-			switch u.UnitClass {
-			case "Mercenary":
-				if _, ok := savedMercs[u.UnitId]; !ok {
-					newMerc := mercenary.Mercenary{
-						ID:          u.UnitId,
-						Name:        u.Name,
-						IconPath:    u.IconPath,
-						MythiumCost: u.MythiumCost,
-						Version:     u.Version,
-					}
-					if err := srv.SaveMerc(newMerc); err != nil {
-						return err
-					}
-				}
-			case "Fighter":
-				if _, ok := savedUnits[u.UnitId]; !ok {
-					if u.TotalValue == "" {
-						return errors.New(fmt.Sprintf("got a unit with empty total value: %s", u.UnitId))
-					}
-					val, err := strconv.Atoi(u.TotalValue)
+
+			for i := 0; i < util.Min(len(player.BuildPerWave), 9); i++ {
+				// nothing leaked
+				if len(player.LeaksPerWave[i]) == 0 {
+					// find most expensive unit
+					expU, totalCost, err := unit.MostExpensive(player.BuildPerWave[i], allUnits)
 					if err != nil {
-						return errors.New(fmt.Sprintf("failed to convert unit total value: %s", u.UnitId))
-					}
-					newUnit := unit.Unit{
-						ID:         u.UnitId,
-						Name:       u.Name,
-						IconPath:   u.IconPath,
-						TotalValue: val,
-						Version:    u.Version,
-					}
-					if err := srv.SaveUnit(newUnit); err != nil {
+						fmt.Println(player.LeaksPerWave[i])
+						fmt.Println(player.BuildPerWave[i])
+						fmt.Println(i)
+						fmt.Println(g)
 						return err
+					}
+					// get table name
+					bn := util.GenerateUnitTableName(expU, i)
+					// assign new benchmark
+					if benchmarks[bn].Value == 0 || benchmarks[bn].Value > totalCost {
+						newBm := benchmarks[bn]
+						newBm.Value = totalCost
+						benchmarks[bn] = newBm
 					}
 				}
 			}
 		}
-
-		off += 50
 	}
+	for err := range errChan {
+		return err
+	}
+
+	// save benchmarks
+	for _, b := range benchmarks {
+		if err := srv.SaveBenchmark(b); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

@@ -10,8 +10,8 @@ type Unit struct {
 	Version    string
 }
 
-func GetAll(db *sql.DB) (map[string]Unit, error) {
-	units := make(map[string]Unit)
+func GetAll(db *sql.DB) (map[string]*Unit, error) {
+	units := make(map[string]*Unit)
 
 	rows, err := db.Query(`SELECT unit_id, name, total_value, icon_path, version FROM unit`)
 	defer rows.Close()
@@ -22,7 +22,7 @@ func GetAll(db *sql.DB) (map[string]Unit, error) {
 	for rows.Next() {
 		var aunit Unit
 		err = rows.Scan(&aunit.ID, &aunit.Name, &aunit.TotalValue, &aunit.IconPath, &aunit.Version)
-		units[aunit.ID] = aunit
+		units[aunit.ID] = &aunit
 	}
 
 	return units, rows.Err()
