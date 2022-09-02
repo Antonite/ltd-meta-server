@@ -28,7 +28,7 @@ func GetAll(db *sql.DB) (map[string]*Unit, error) {
 	return units, rows.Err()
 }
 
-func (unit Unit) Save(db *sql.DB) error {
+func (unit *Unit) Save(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err

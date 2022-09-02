@@ -10,8 +10,8 @@ type Mercenary struct {
 	Version     string
 }
 
-func GetAll(db *sql.DB) (map[string]Mercenary, error) {
-	units := make(map[string]Mercenary)
+func GetAll(db *sql.DB) (map[string]*Mercenary, error) {
+	units := make(map[string]*Mercenary)
 
 	rows, err := db.Query(`SELECT unit_id, name, mythium_cost, icon_path, version FROM mercenary`)
 	defer rows.Close()
@@ -22,13 +22,13 @@ func GetAll(db *sql.DB) (map[string]Mercenary, error) {
 	for rows.Next() {
 		var aunit Mercenary
 		err = rows.Scan(&aunit.ID, &aunit.Name, &aunit.MythiumCost, &aunit.IconPath, &aunit.Version)
-		units[aunit.ID] = aunit
+		units[aunit.Name] = &aunit
 	}
 
 	return units, rows.Err()
 }
 
-func (unit Mercenary) Save(db *sql.DB) error {
+func (unit *Mercenary) Save(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err

@@ -1,15 +1,19 @@
 package benchmark
 
-import "database/sql"
+import (
+	"database/sql"
+	"sync"
+)
 
 type Benchmark struct {
 	Wave   int
 	UnitId string
 	Value  int
+	Mu     sync.Mutex
 }
 
-func GetAll(db *sql.DB) (map[int]map[string]Benchmark, error) {
-	benchmarks := make(map[int]map[string]Benchmark)
+func GetAll(db *sql.DB) (map[int]map[string]*Benchmark, error) {
+	benchmarks := make(map[int]map[string]*Benchmark)
 
 	rows, err := db.Query(`SELECT wave, unit_id, value FROM benchmark`)
 	defer rows.Close()
@@ -22,16 +26,16 @@ func GetAll(db *sql.DB) (map[int]map[string]Benchmark, error) {
 		err = rows.Scan(&abenchmark.Wave, &abenchmark.UnitId, &abenchmark.Value)
 		val, ok := benchmarks[abenchmark.Wave]
 		if !ok {
-			val = make(map[string]Benchmark)
+			val = make(map[string]*Benchmark)
 		}
-		val[abenchmark.UnitId] = abenchmark
+		val[abenchmark.UnitId] = &abenchmark
 		benchmarks[abenchmark.Wave] = val
 	}
 
 	return benchmarks, rows.Err()
 }
 
-func (bm Benchmark) Save(db *sql.DB) error {
+func (bm *Benchmark) Save(db *sql.DB) error {
 	tx, err := db.Begin()
 	if err != nil {
 		return err
