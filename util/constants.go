@@ -1,7 +1,6 @@
 package util
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -29,12 +28,10 @@ func IsFullHydra(build []string, pos string) bool {
 		c := strings.Split(u, ":")
 		if c[1] == cords {
 			if c[0] != Hydra && c[0] != Eggsack {
-				fmt.Printf("egg didn't turn into hydra: %v\n", build)
 			}
 			return c[2] == "0"
 		}
 	}
 
-	fmt.Printf("couldn't find the hydra: %v\n", build)
 	return false
 }

@@ -65,6 +65,18 @@ func (s *Server) FindHold(tb, hash string) (*dynamicdata.Hold, error) {
 	return dynamicdata.FindHold(s.db, tb, hash)
 }
 
-func (s *Server) SaveHold(tb string, h *dynamicdata.Hold) error {
+func (s *Server) SaveHold(tb string, h *dynamicdata.Hold) (int, error) {
 	return h.SaveHold(s.db, tb)
+}
+
+func (s *Server) FindSends(tb string, id int, sends string) (*dynamicdata.Send, error) {
+	return dynamicdata.FindSends(s.db, tb, id, sends)
+}
+
+func (s *Server) InsertSend(tb string, send *dynamicdata.Send) error {
+	return send.InsertSend(s.db, tb)
+}
+
+func (s *Server) UpdateSend(tb string, send *dynamicdata.Send) error {
+	return send.UpdateSend(s.db, tb)
 }

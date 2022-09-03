@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 const url = "https://apiv2.legiontd2.com/games?limit=50&sortBy=date&sortDirection=1&includeDetails=true&dateAfter=%v&offset=%v"
@@ -107,11 +108,9 @@ func (api *LtdApi) RequestUnits(version string, output chan<- Unit, errChan chan
 	}
 }
 
-func (api *LtdApi) RequestGames(date string, output chan<- Game, errChan chan<- error) {
-	defer close(output)
-	defer close(errChan)
-
-	offset := 0
+func (api *LtdApi) RequestGames(date string, output chan<- Game, errChan chan<- error, wg *sync.WaitGroup, worker int, numWorkers int) {
+	defer wg.Done()
+	offset := worker * 50
 	for {
 		// get units from api
 		resp, err := api.getGames(offset, date)
@@ -136,14 +135,13 @@ func (api *LtdApi) RequestGames(date string, output chan<- Game, errChan chan<- 
 			output <- g
 		}
 
-		offset += 50
+		offset += numWorkers * 50
 		if offset > 50000 {
 			lastDate := games[len(games)-1].Date
 			date = strings.Join(strings.Split(lastDate, "T"), "%20")
-			offset = 5
+			offset = worker * 50
 		}
 	}
-
 }
 
 func (api *LtdApi) getUnits(version string) (*http.Response, error) {

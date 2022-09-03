@@ -7,8 +7,10 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/antonite/ltd-meta-server/benchmark"
+	dynamicdata "github.com/antonite/ltd-meta-server/dynamic-data"
 	"github.com/antonite/ltd-meta-server/ltdapi"
 	"github.com/antonite/ltd-meta-server/mercenary"
 	"github.com/antonite/ltd-meta-server/server"
@@ -19,6 +21,18 @@ import (
 const vers = "9.07.2"
 const waves = 10
 const holdMultipler = 1.2
+const workers = 20
+
+type analysis struct {
+	biggestUnitID  string
+	biggestUnitPos string
+	TotalValue     int
+	adjustedValue  int
+	TotalMythium   int
+	sendHash       string
+	positionHash   string
+	position       string
+}
 
 func main() {
 	srv, err := server.New()
@@ -44,6 +58,11 @@ func main() {
 	}
 	fmt.Println("finished initial benchmark")
 
+	fmt.Println("starting historical generation")
+	if err := generateHistoricalData(srv); err != nil {
+		fmt.Println(err)
+	}
+	fmt.Println("finished historical generation")
 }
 
 func generateTables(srv *server.Server) error {
@@ -155,10 +174,19 @@ func generateHistoricalData(srv *server.Server) error {
 		return err
 	}
 
-	date := "2022-08-09%2000:00:00.000Z"
+	date := "2022-09-02%2000:00:00.000Z"
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
-	go srv.Api.RequestGames(date, games, errChan)
+	wg := &sync.WaitGroup{}
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
+	}
+	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
+		wg.Wait()
+		close(games)
+		close(errChan)
+	}(wg, games, errChan)
 	for g := range games {
 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
 			continue
@@ -168,56 +196,111 @@ func generateHistoricalData(srv *server.Server) error {
 				continue
 			}
 
-			for i := 0; i < util.Min(len(player.BuildPerWave)-1, 10); i++ {
-				// nothing leaked and something was sent
-				if len(player.LeaksPerWave[i]) == 0 && len(player.MercenariesReceivedPerWave) > 0 {
+			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
+				// something was sent and built
+				if len(player.MercenariesReceivedPerWave[i]) > 0 && len(player.BuildPerWave[i]) > 0 {
 					// find most expensive unit
 					anls, err := analyzeBoard(player, allUnits, allMercs, i)
 					if err != nil {
 						return err
 					}
-					// check hydra case
-					if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
-						fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
-						// don't consider broken eggs as a hold
-						if !fullHydra {
-							continue
-						}
-					}
 
 					// get benchmark
-					bn := benchmarks[i+1][anls.biggestUnitID]
-					bn.Mu.Lock()
+					bn, ok := benchmarks[i+1][anls.biggestUnitID]
+					if !ok {
+						fmt.Printf("wave: %v unit: %v\n", i+1, anls.biggestUnitID)
+					}
 					// check if hold is good enough
 					if float64(anls.adjustedValue) < float64(bn.Value)*holdMultipler {
-						if bn.Value == 0 || bn.Value > anls.adjustedValue {
-							bn.Value = anls.adjustedValue
+						bn.Mu.Lock()
+						leaked := len(player.LeaksPerWave[i]) > 0
+						if !leaked {
+							// check hydra case
+							if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
+								fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
+								// don't consider broken eggs as a hold
+								if !fullHydra {
+									leaked = true
+								}
+							}
+						}
+						if !leaked {
+							if bn.Value == 0 || bn.Value > anls.adjustedValue {
+								bn.Value = anls.adjustedValue
+							}
 						}
 						bn.Mu.Unlock()
-
 						tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
 						htn := tn + "_holds"
+						id := 0
+						h, err := srv.FindHold(htn, anls.positionHash)
+						if err != nil {
+							return err
+						}
+						if h == nil && leaked {
+							continue
+						}
+						if h == nil {
+							h = &dynamicdata.Hold{
+								PositionHash: anls.positionHash,
+								Position:     anls.position,
+								TotalValue:   anls.TotalValue,
+								VersionAdded: srv.Version,
+							}
+							id, err = srv.SaveHold(htn, h)
+							if err != nil {
+								return err
+							}
+						} else {
+							id = h.ID
+						}
 						stn := tn + "_sends"
+						s, err := srv.FindSends(stn, id, anls.sendHash)
+						if err != nil {
+							return err
+						}
+						if s == nil {
+							newS := &dynamicdata.Send{
+								HoldsID:       id,
+								Sends:         anls.sendHash,
+								TotalMythium:  anls.TotalMythium,
+								AdjustedValue: anls.adjustedValue,
+							}
+							if leaked {
+								newS.Leaked = 1
+							} else {
+								newS.Held = 1
+							}
+							err := srv.InsertSend(stn, newS)
+							if err != nil {
+								return err
+							}
+						} else {
+							if leaked {
+								s.Leaked = 1
+							} else {
+								s.Held = 1
+							}
+						}
 					}
-
 				}
 			}
-
 		}
 	}
 	for err := range errChan {
 		return err
 	}
 
-}
+	// save benchmarks
+	for _, w := range benchmarks {
+		for _, v := range w {
+			if err := srv.SaveBenchmark(v); err != nil {
+				return err
+			}
+		}
+	}
 
-type analysis struct {
-	biggestUnitID  string
-	biggestUnitPos string
-	TotalValue     int
-	adjustedValue  int
-	sendHash       string
-	positionHash   string
+	return nil
 }
 
 func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, allMercs map[string]*mercenary.Mercenary, index int) (analysis, error) {
@@ -225,7 +308,7 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 	expCost := 0
 	// rehash board
 	sort.Strings(player.BuildPerWave[index])
-	diff, err := strconv.ParseFloat(strings.Split(strings.Split(player.BuildPerWave[index][0], ":")[1], "|")[0], 64)
+	diff, err := strconv.ParseFloat(strings.Split(strings.Split(player.BuildPerWave[index][0], ":")[1], "|")[1], 64)
 	if err != nil {
 		return anls, err
 	}
@@ -246,24 +329,26 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		if err != nil {
 			return anls, err
 		}
-		anls.sendHash += hash
+		anls.positionHash += hash + ","
 	}
+	anls.positionHash = strings.TrimSuffix(anls.positionHash, ",")
 	if anls.biggestUnitID == "" {
 		return anls, errors.New("failed to compute most expensive unit")
 	}
 
 	// analyse sends
-	totalMyth := 0
 	for _, m := range player.MercenariesReceivedPerWave[index] {
 		val, ok := allMercs[m]
 		if !ok {
 			return anls, errors.New(fmt.Sprintf("failed to find merc: %s", m))
 		}
-		totalMyth += val.MythiumCost
+		anls.TotalMythium += val.MythiumCost
 	}
-	anls.adjustedValue = anls.TotalValue + int(math.Ceil(1.25*float64(totalMyth)))
+	anls.adjustedValue = anls.TotalValue - int(math.Ceil(1.25*float64(anls.TotalMythium)))
 	sort.Strings(player.MercenariesReceivedPerWave[index])
 	anls.sendHash = strings.Join(player.MercenariesReceivedPerWave[index], ",")
+
+	anls.position = strings.Join(player.BuildPerWave[index], ",")
 
 	return anls, nil
 }
@@ -271,16 +356,21 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 func adjustUnit(u string, diff float64) (string, error) {
 	build := strings.Split(u, ":")
 	pos := strings.Split(build[1], "|")
-	x, err := strconv.ParseFloat(pos[0], 64)
+	y, err := strconv.ParseFloat(pos[1], 64)
 	if err != nil {
 		return "", err
 	}
-	x = x - diff
-	return fmt.Sprintf("%s:%f|%s:%s", build[0], x, pos[1], build[2]), nil
+	adjusted := int(y - diff)
+	return fmt.Sprintf("%s:%s|%v:%s", build[0], pos[0], adjusted, build[2]), nil
 }
 
 func initialBenchMark(srv *server.Server) error {
 	allUnits, err := srv.GetUnits()
+	if err != nil {
+		return err
+	}
+
+	allMercs, err := srv.GetMercs()
 	if err != nil {
 		return err
 	}
@@ -296,16 +386,26 @@ func initialBenchMark(srv *server.Server) error {
 				Wave:   i,
 				UnitId: u,
 				Value:  0,
+				Mu:     &sync.Mutex{},
 			}
 			benchmarks[bn] = &b
 		}
 	}
 
 	// get games
-	date := "2022-08-31%2000:00:00.000Z"
+	date := "2022-09-3%2000:00:00.000Z"
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
-	go srv.Api.RequestGames(date, games, errChan)
+	wg := &sync.WaitGroup{}
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
+	}
+	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
+		wg.Wait()
+		close(games)
+		close(errChan)
+	}(wg, games, errChan)
 	for g := range games {
 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
 			continue
@@ -315,11 +415,11 @@ func initialBenchMark(srv *server.Server) error {
 				continue
 			}
 
-			for i := 0; i < util.Min(len(player.BuildPerWave)-1, 10); i++ {
+			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
 				// nothing leaked
 				if len(player.LeaksPerWave[i]) == 0 {
 					// find most expensive unit
-					anls, err := analyzeBoard(player, allUnits, i)
+					anls, err := analyzeBoard(player, allUnits, allMercs, i)
 					if err != nil {
 						return err
 					}
@@ -335,11 +435,13 @@ func initialBenchMark(srv *server.Server) error {
 					// get table name
 					bn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
 					// assign new benchmark
+					benchmarks[bn].Mu.Lock()
 					if benchmarks[bn].Value == 0 || benchmarks[bn].Value > anls.TotalValue {
 						newBm := benchmarks[bn]
 						newBm.Value = anls.TotalValue
 						benchmarks[bn] = newBm
 					}
+					benchmarks[bn].Mu.Unlock()
 				}
 			}
 		}
