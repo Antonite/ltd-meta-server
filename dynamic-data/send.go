@@ -9,6 +9,7 @@ const findSendQuery = `SELECT holds_id, sends, total_mythium, adjusted_value, he
 const getSendsQuery = `SELECT holds_id, sends, total_mythium, adjusted_value, held, leaked FROM %s where holds_id = %v`
 const insertSendsQuery = `INSERT INTO %s(holds_id, sends, total_mythium, adjusted_value, held, leaked) VALUES(?,?,?,?,?,?)`
 const updateSendsQuery = `UPDATE %s SET held = ?, leaked = ? where holds_id = %v and sends = '%s'`
+const getTopSendsQuery = `SELECT holds_id, sends, total_mythium, adjusted_value, held, leaked FROM %s`
 
 type Send struct {
 	HoldsID       int
@@ -90,4 +91,25 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 	}
 
 	return err
+}
+
+func getTopSends(db *sql.DB, tb string) ([]*Send, error) {
+	q := fmt.Sprintf(getTopSendsQuery, tb)
+	rows, err := db.Query(q)
+	defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	sends := []*Send{}
+	for rows.Next() {
+		var s Send
+		err = rows.Scan(&s.HoldsID, &s.Sends, &s.TotalMythium, &s.AdjustedValue, &s.Held, &s.Leaked)
+		if err != nil {
+			return nil, err
+		}
+		sends = append(sends, &s)
+	}
+
+	return sends, nil
 }

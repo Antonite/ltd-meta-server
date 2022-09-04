@@ -1,1 +1,29 @@
 package main
+
+import (
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+
+	"github.com/antonite/ltd-meta-server/server"
+)
+
+func main() {
+	srv, err := server.New()
+	if err != nil {
+		panic("failed to create server")
+	}
+
+	http.HandleFunc("/units", func(w http.ResponseWriter, r *http.Request) {
+		srv.HandleGetUnits(w, r)
+	})
+
+	http.HandleFunc("/holds", func(w http.ResponseWriter, r *http.Request) {
+		srv.HandleGetTopHolds(w, r)
+	})
+
+	fmt.Println("Server started   " + time.Now().Format("Mon Jan _2 15:04:05 2006"))
+
+	log.Fatal(http.ListenAndServe(":8081", nil))
+}

@@ -2,6 +2,7 @@ package server
 
 import (
 	"database/sql"
+	"time"
 
 	"github.com/antonite/ltd-meta-server/benchmark"
 	"github.com/antonite/ltd-meta-server/db"
@@ -15,6 +16,12 @@ type Server struct {
 	db      *sql.DB
 	Api     *ltdapi.LtdApi
 	Version string
+	Stats   map[int]map[string]CachedStat
+}
+
+type CachedStat struct {
+	stats []dynamicdata.Stats
+	exp   time.Time
 }
 
 func New() (*Server, error) {
@@ -30,7 +37,9 @@ func New() (*Server, error) {
 		return nil, err
 	}
 
-	return &Server{db: database, Api: api, Version: v}, nil
+	stats := make(map[int]map[string]CachedStat)
+
+	return &Server{db: database, Api: api, Version: v, Stats: stats}, nil
 }
 
 func (s *Server) GetUnits() (map[string]*unit.Unit, error) {

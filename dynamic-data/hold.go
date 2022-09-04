@@ -6,6 +6,7 @@ import (
 )
 
 const getHoldsQuery = `SELECT id, position_hash, position, total_value, version_added FROM %s where position_hash = '%s'`
+const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, version_added FROM %s where id = '%v'`
 const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, version_added) VALUES(?,?,?,?)`
 
 type Hold struct {
@@ -18,6 +19,23 @@ type Hold struct {
 
 func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
 	q := fmt.Sprintf(getHoldsQuery, tb, hash)
+	rows, err := db.Query(q)
+	defer rows.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	for rows.Next() {
+		var h Hold
+		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.VersionAdded)
+		return &h, err
+	}
+
+	return nil, nil
+}
+
+func FindHoldByID(db *sql.DB, tb string, id int) (*Hold, error) {
+	q := fmt.Sprintf(getHoldsByIDQuery, tb, id)
 	rows, err := db.Query(q)
 	defer rows.Close()
 	if err != nil {
