@@ -45,8 +45,9 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 	}
 
 	for k, v := range mappedScores {
+		l := len(mappedSends[k])
 		stat := Stats{
-			Score: int(math.Ceil(v)),
+			Score: int(math.Ceil(v / float64(l))),
 			Sends: mappedSends[k],
 			ID:    k,
 		}

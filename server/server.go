@@ -13,10 +13,17 @@ import (
 )
 
 type Server struct {
-	db      *sql.DB
-	Api     *ltdapi.LtdApi
-	Version string
-	Stats   map[int]map[string]CachedStat
+	db       *sql.DB
+	Api      *ltdapi.LtdApi
+	Version  string
+	AllUnits CachedUnits
+	Stats    map[int]map[string]CachedStat
+	Tables   map[string]bool
+}
+
+type CachedUnits struct {
+	Units []*unit.Unit
+	Mercs map[string]*mercenary.Mercenary
 }
 
 type CachedStat struct {
@@ -37,9 +44,32 @@ func New() (*Server, error) {
 		return nil, err
 	}
 
+	tables, err := db.GetTables(database)
+	if err != nil {
+		return nil, err
+	}
+
 	stats := make(map[int]map[string]CachedStat)
 
-	return &Server{db: database, Api: api, Version: v, Stats: stats}, nil
+	s := &Server{db: database, Api: api, Version: v, Stats: stats, Tables: tables}
+
+	units, err := s.GetUnits()
+	if err != nil {
+		return nil, err
+	}
+	ulist := []*unit.Unit{}
+	for _, u := range units {
+		ulist = append(ulist, u)
+	}
+
+	mercs, err := s.GetMercs()
+	if err != nil {
+		return nil, err
+	}
+
+	s.AllUnits = CachedUnits{Units: ulist, Mercs: mercs}
+
+	return s, nil
 }
 
 func (s *Server) GetUnits() (map[string]*unit.Unit, error) {

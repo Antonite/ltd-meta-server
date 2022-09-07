@@ -95,6 +95,7 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 
 func getTopSends(db *sql.DB, tb string) ([]*Send, error) {
 	q := fmt.Sprintf(getTopSendsQuery, tb)
+	fmt.Println(q)
 	rows, err := db.Query(q)
 	defer rows.Close()
 	if err != nil {

@@ -10,6 +10,7 @@ import (
 
 const holdsQuery = "create table if not exists %s(id int not null auto_increment,position_hash varchar(4096) not null,position varchar(4096) not null,total_value int not null,version_added varchar(16) not null,primary key(id));"
 const sendsQuery = "create table if not exists %s(id int not null auto_increment,holds_id int not null,sends varchar(1024) not null,total_mythium int not null,adjusted_value int not null, held int not null,leaked int not null,primary key(id),foreign key(holds_id) references %s(id));"
+const allTables = "show tables like '%_holds';"
 
 const user = "root"
 const database = "ltd"
@@ -65,4 +66,22 @@ func CreateTable(db *sql.DB, name string) error {
 	}
 
 	return err
+}
+
+func GetTables(db *sql.DB) (map[string]bool, error) {
+	tables := make(map[string]bool)
+
+	rows, err := db.Query(allTables)
+	defer rows.Close()
+	if err != nil {
+		return tables, err
+	}
+
+	for rows.Next() {
+		var atable string
+		err = rows.Scan(&atable)
+		tables[atable] = true
+	}
+
+	return tables, rows.Err()
 }
