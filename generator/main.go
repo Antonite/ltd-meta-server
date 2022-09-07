@@ -114,7 +114,14 @@ func generateUnits(srv *server.Server) error {
 				if u.MythiumCost == "" {
 					return errors.New(fmt.Sprintf("got a merc with empty myth cost: %s", u.UnitId))
 				}
+				if u.IncomeBonus == "" {
+					return errors.New(fmt.Sprintf("got a merc with empty income bonus: %s", u.UnitId))
+				}
 				cost, err := strconv.Atoi(u.MythiumCost)
+				if err != nil {
+					return err
+				}
+				inc, err := strconv.Atoi(u.IncomeBonus)
 				if err != nil {
 					return err
 				}
@@ -123,6 +130,7 @@ func generateUnits(srv *server.Server) error {
 					Name:        u.Name,
 					IconPath:    u.IconPath,
 					MythiumCost: cost,
+					IncomeBonus: inc,
 					Version:     u.Version,
 				}
 				if err := srv.SaveMerc(&newMerc); err != nil {
@@ -174,7 +182,7 @@ func generateHistoricalData(srv *server.Server) error {
 		return err
 	}
 
-	date := "2022-09-02%2000:00:00.000Z"
+	date := "2022-09-07%2015:00:00.000Z"
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
@@ -337,14 +345,21 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 	}
 
 	// analyse sends
+	ajMyth := 0.0
 	for _, m := range player.MercenariesReceivedPerWave[index] {
 		val, ok := allMercs[m]
 		if !ok {
 			return anls, errors.New(fmt.Sprintf("failed to find merc: %s", m))
 		}
 		anls.TotalMythium += val.MythiumCost
+		if val.IncomeBonus != 0 {
+			ajMyth += float64(val.MythiumCost) * (float64(val.MythiumCost) / float64(val.IncomeBonus) * float64(3) / float64(10))
+		} else {
+			ajMyth += float64(val.MythiumCost)
+		}
+
 	}
-	anls.adjustedValue = anls.TotalValue - int(math.Ceil(1.25*float64(anls.TotalMythium)))
+	anls.adjustedValue = anls.TotalValue - int(math.Ceil(1.25*ajMyth))
 	sort.Strings(player.MercenariesReceivedPerWave[index])
 	anls.sendHash = strings.Join(player.MercenariesReceivedPerWave[index], ",")
 
@@ -393,7 +408,7 @@ func initialBenchMark(srv *server.Server) error {
 	}
 
 	// get games
-	date := "2022-09-3%2000:00:00.000Z"
+	date := "2022-09-07%2015:00:00.000Z"
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}

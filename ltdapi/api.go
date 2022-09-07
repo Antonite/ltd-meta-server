@@ -42,6 +42,7 @@ type Unit struct {
 	Version       string
 	TotalValue    string
 	MythiumCost   string
+	IncomeBonus   string
 	UnitClass     string
 	CategoryClass string
 }

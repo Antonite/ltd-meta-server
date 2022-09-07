@@ -7,13 +7,14 @@ type Mercenary struct {
 	Name        string
 	IconPath    string
 	MythiumCost int
+	IncomeBonus int
 	Version     string
 }
 
 func GetAll(db *sql.DB) (map[string]*Mercenary, error) {
 	units := make(map[string]*Mercenary)
 
-	rows, err := db.Query(`SELECT unit_id, name, mythium_cost, icon_path, version FROM mercenary`)
+	rows, err := db.Query(`SELECT unit_id, name, mythium_cost, income_bonus, icon_path, version FROM mercenary`)
 	defer rows.Close()
 	if err != nil {
 		return units, err
@@ -21,7 +22,7 @@ func GetAll(db *sql.DB) (map[string]*Mercenary, error) {
 
 	for rows.Next() {
 		var aunit Mercenary
-		err = rows.Scan(&aunit.ID, &aunit.Name, &aunit.MythiumCost, &aunit.IconPath, &aunit.Version)
+		err = rows.Scan(&aunit.ID, &aunit.Name, &aunit.MythiumCost, &aunit.IncomeBonus, &aunit.IconPath, &aunit.Version)
 		units[aunit.Name] = &aunit
 	}
 
@@ -35,13 +36,13 @@ func (unit *Mercenary) Save(db *sql.DB) error {
 	}
 
 	defer tx.Rollback()
-	stmt, err := tx.Prepare("INSERT INTO mercenary(unit_id, name, icon_path, mythium_cost, version) VALUES(?,?,?,?,?)")
+	stmt, err := tx.Prepare("INSERT INTO mercenary(unit_id, name, icon_path, mythium_cost, income_bonus, version) VALUES(?,?,?,?,?,?)")
 	if err != nil {
 		return err
 	}
 
 	defer stmt.Close()
-	_, err = stmt.Exec(unit.ID, unit.Name, unit.IconPath, unit.MythiumCost, unit.Version)
+	_, err = stmt.Exec(unit.ID, unit.Name, unit.IconPath, unit.MythiumCost, unit.IncomeBonus, unit.Version)
 	if err != nil {
 		return err
 	}
