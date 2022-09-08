@@ -12,7 +12,7 @@ const holdsQuery = "create table if not exists %s(id int not null auto_increment
 const sendsQuery = "create table if not exists %s(id int not null auto_increment,holds_id int not null,sends varchar(1024) not null,total_mythium int not null,adjusted_value int not null, held int not null,leaked int not null,primary key(id),foreign key(holds_id) references %s(id));"
 const allTables = "show tables like '%_holds';"
 
-const user = "root"
+const user = "antonite"
 const database = "ltd"
 
 func New() (*sql.DB, error) {

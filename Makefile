@@ -1,4 +1,4 @@
-DB_USER ?= root
+DB_USER ?= antonite
 DB_HOST ?= 127.0.0.1
 DB_NAME ?= ltd
 DB_PORT ?= 3306
@@ -13,12 +13,12 @@ migrate:
 .PHONY: create-db
 create-db:
 	@ echo "Creating database..."
-	@ mysql -u root -e 'CREATE DATABASE $(DB_NAME)'
+	@ mysql -u antonite -e 'CREATE DATABASE $(DB_NAME)'
 
 .PHONY: drop-db
 drop-db:
 	@ echo "Dropping database..."
-	@ mysql -u root -e 'DROP DATABASE IF EXISTS $(DB_NAME)'
+	@ mysql -u antonite -e 'DROP DATABASE IF EXISTS $(DB_NAME)'
 
 .PHONY: rebuild-db
 rebuild-db: drop-db create-db migrate

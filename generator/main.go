@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/antonite/ltd-meta-server/benchmark"
 	dynamicdata "github.com/antonite/ltd-meta-server/dynamic-data"
@@ -51,12 +52,6 @@ func main() {
 		fmt.Println(err)
 	}
 	fmt.Println("finished table generation")
-
-	fmt.Println("starting initial benchmark")
-	if err := initialBenchMark(srv); err != nil {
-		fmt.Println(err)
-	}
-	fmt.Println("finished initial benchmark")
 
 	fmt.Println("starting historical generation")
 	if err := generateHistoricalData(srv); err != nil {
@@ -110,7 +105,7 @@ func generateUnits(srv *server.Server) error {
 		}
 		switch u.UnitClass {
 		case "Mercenary":
-			if _, ok := savedMercs[u.UnitId]; !ok {
+			if _, ok := savedMercs[u.Name]; !ok {
 				if u.MythiumCost == "" {
 					return errors.New(fmt.Sprintf("got a merc with empty myth cost: %s", u.UnitId))
 				}
@@ -182,13 +177,16 @@ func generateHistoricalData(srv *server.Server) error {
 		return err
 	}
 
-	date := "2022-09-07%2015:00:00.000Z"
+	today := time.Now().UTC()
+	yesterday := today.Add(time.Hour * -24)
+	dateStart := fmt.Sprintf("%d-%02d-%02d%%2015:00:00.000Z", yesterday.Year(), yesterday.Month(), yesterday.Day())
+	dateEnd := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", today.Year(), today.Month(), today.Day())
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
-		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
+		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
 	}
 	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
 		wg.Wait()
@@ -214,12 +212,23 @@ func generateHistoricalData(srv *server.Server) error {
 					}
 
 					// get benchmark
+					if _, ok := benchmarks[i+1]; !ok {
+						benchmarks[i+1] = make(map[string]*benchmark.Benchmark)
+					}
+
 					bn, ok := benchmarks[i+1][anls.biggestUnitID]
 					if !ok {
-						fmt.Printf("wave: %v unit: %v\n", i+1, anls.biggestUnitID)
+						bn = &benchmark.Benchmark{
+							Wave:   i + 1,
+							UnitId: anls.biggestUnitID,
+							Value:  0,
+							Mu:     &sync.Mutex{},
+						}
+						benchmarks[i+1][anls.biggestUnitID] = bn
+						fmt.Printf("new unit - wave: %v unit: %v\n", i+1, anls.biggestUnitID)
 					}
 					// check if hold is good enough
-					if float64(anls.adjustedValue) < float64(bn.Value)*holdMultipler {
+					if float64(anls.adjustedValue) < float64(bn.Value)*holdMultipler || bn.Value == 0 {
 						bn.Mu.Lock()
 						leaked := len(player.LeaksPerWave[i]) > 0
 						if !leaked {
@@ -296,6 +305,7 @@ func generateHistoricalData(srv *server.Server) error {
 		}
 	}
 	for err := range errChan {
+		fmt.Println(err)
 		return err
 	}
 
@@ -331,7 +341,6 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 			anls.biggestUnitID = existing.ID
 			anls.biggestUnitPos = u
 		}
-		anls.TotalValue += existing.TotalValue
 
 		hash, err := adjustUnit(u, diff)
 		if err != nil {
@@ -339,6 +348,7 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		}
 		anls.positionHash += hash + ","
 	}
+	anls.TotalValue += player.ValuePerWave[index]
 	anls.positionHash = strings.TrimSuffix(anls.positionHash, ",")
 	if anls.biggestUnitID == "" {
 		return anls, errors.New("failed to compute most expensive unit")
@@ -379,98 +389,98 @@ func adjustUnit(u string, diff float64) (string, error) {
 	return fmt.Sprintf("%s:%s|%v:%s", build[0], pos[0], adjusted, build[2]), nil
 }
 
-func initialBenchMark(srv *server.Server) error {
-	allUnits, err := srv.GetUnits()
-	if err != nil {
-		return err
-	}
+// func initialBenchMark(srv *server.Server) error {
+// 	allUnits, err := srv.GetUnits()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	allMercs, err := srv.GetMercs()
-	if err != nil {
-		return err
-	}
+// 	allMercs, err := srv.GetMercs()
+// 	if err != nil {
+// 		return err
+// 	}
 
-	benchmarks := make(map[string]*benchmark.Benchmark)
-	for u := range allUnits {
-		for i := 1; i <= waves; i++ {
-			if i == 1 && allUnits[u].TotalValue > util.CashoutGold {
-				continue
-			}
-			bn := util.GenerateUnitTableName(u, i)
-			b := benchmark.Benchmark{
-				Wave:   i,
-				UnitId: u,
-				Value:  0,
-				Mu:     &sync.Mutex{},
-			}
-			benchmarks[bn] = &b
-		}
-	}
+// 	benchmarks := make(map[string]*benchmark.Benchmark)
+// 	for u := range allUnits {
+// 		for i := 1; i <= waves; i++ {
+// 			if i == 1 && allUnits[u].TotalValue > util.CashoutGold {
+// 				continue
+// 			}
+// 			bn := util.GenerateUnitTableName(u, i)
+// 			b := benchmark.Benchmark{
+// 				Wave:   i,
+// 				UnitId: u,
+// 				Value:  0,
+// 				Mu:     &sync.Mutex{},
+// 			}
+// 			benchmarks[bn] = &b
+// 		}
+// 	}
 
-	// get games
-	date := "2022-09-07%2015:00:00.000Z"
-	games := make(chan ltdapi.Game)
-	errChan := make(chan error, 1)
-	wg := &sync.WaitGroup{}
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
-	}
-	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
-		wg.Wait()
-		close(games)
-		close(errChan)
-	}(wg, games, errChan)
-	for g := range games {
-		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
-			continue
-		}
-		for _, player := range g.PlayersData {
-			if player.Cross {
-				continue
-			}
+// 	// get games
+// 	date := "2022-09-07%2015:00:00.000Z"
+// 	games := make(chan ltdapi.Game)
+// 	errChan := make(chan error, 1)
+// 	wg := &sync.WaitGroup{}
+// 	for w := 0; w < workers; w++ {
+// 		wg.Add(1)
+// 		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
+// 	}
+// 	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
+// 		wg.Wait()
+// 		close(games)
+// 		close(errChan)
+// 	}(wg, games, errChan)
+// 	for g := range games {
+// 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
+// 			continue
+// 		}
+// 		for _, player := range g.PlayersData {
+// 			if player.Cross {
+// 				continue
+// 			}
 
-			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
-				// nothing leaked
-				if len(player.LeaksPerWave[i]) == 0 {
-					// find most expensive unit
-					anls, err := analyzeBoard(player, allUnits, allMercs, i)
-					if err != nil {
-						return err
-					}
-					// check hydra case
-					if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
-						fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
-						// don't consider broken eggs as a hold
-						if !fullHydra {
-							continue
-						}
-					}
+// 			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
+// 				// nothing leaked
+// 				if len(player.LeaksPerWave[i]) == 0 {
+// 					// find most expensive unit
+// 					anls, err := analyzeBoard(player, allUnits, allMercs, i)
+// 					if err != nil {
+// 						return err
+// 					}
+// 					// check hydra case
+// 					if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
+// 						fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
+// 						// don't consider broken eggs as a hold
+// 						if !fullHydra {
+// 							continue
+// 						}
+// 					}
 
-					// get table name
-					bn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
-					// assign new benchmark
-					benchmarks[bn].Mu.Lock()
-					if benchmarks[bn].Value == 0 || benchmarks[bn].Value > anls.TotalValue {
-						newBm := benchmarks[bn]
-						newBm.Value = anls.TotalValue
-						benchmarks[bn] = newBm
-					}
-					benchmarks[bn].Mu.Unlock()
-				}
-			}
-		}
-	}
-	for err := range errChan {
-		return err
-	}
+// 					// get table name
+// 					bn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
+// 					// assign new benchmark
+// 					benchmarks[bn].Mu.Lock()
+// 					if benchmarks[bn].Value == 0 || benchmarks[bn].Value > anls.TotalValue {
+// 						newBm := benchmarks[bn]
+// 						newBm.Value = anls.TotalValue
+// 						benchmarks[bn] = newBm
+// 					}
+// 					benchmarks[bn].Mu.Unlock()
+// 				}
+// 			}
+// 		}
+// 	}
+// 	for err := range errChan {
+// 		return err
+// 	}
 
-	// save benchmarks
-	for _, b := range benchmarks {
-		if err := srv.SaveBenchmark(b); err != nil {
-			return err
-		}
-	}
+// 	// save benchmarks
+// 	for _, b := range benchmarks {
+// 		if err := srv.SaveBenchmark(b); err != nil {
+// 			return err
+// 		}
+// 	}
 
-	return nil
-}
+// 	return nil
+// }

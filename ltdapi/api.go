@@ -6,11 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"os"
-	"strings"
 	"sync"
 )
 
-const url = "https://apiv2.legiontd2.com/games?limit=50&sortBy=date&sortDirection=1&includeDetails=true&dateAfter=%v&offset=%v"
+const url = "https://apiv2.legiontd2.com/games?limit=50&sortBy=date&sortDirection=1&includeDetails=true&dateAfter=%v&dateBefore=%v&offset=%v"
 const unitsUrl = "https://apiv2.legiontd2.com/units/byVersion/%s?limit=0"
 
 type LtdApi struct {
@@ -33,6 +32,7 @@ type PlayersData struct {
 	MercenariesReceivedPerWave [][]string
 	LeaksPerWave               [][]string
 	BuildPerWave               [][]string
+	ValuePerWave               []int
 }
 
 type Unit struct {
@@ -109,13 +109,13 @@ func (api *LtdApi) RequestUnits(version string, output chan<- Unit, errChan chan
 	}
 }
 
-func (api *LtdApi) RequestGames(date string, output chan<- Game, errChan chan<- error, wg *sync.WaitGroup, worker int, numWorkers int) {
+func (api *LtdApi) RequestGames(startDate string, endDate string, output chan<- Game, errChan chan<- error, wg *sync.WaitGroup, worker int, numWorkers int) {
 	defer wg.Done()
 	offset := worker * 50
 	for {
 		// get units from api
-		resp, err := api.getGames(offset, date)
-		fmt.Printf("offset: %v date: %s\n", offset, date)
+		resp, err := api.getGames(offset, startDate, endDate)
+		fmt.Printf("offset: %v\n", offset)
 		if err != nil || (resp.StatusCode != 200 && resp.StatusCode != 404) {
 			fmt.Println(resp)
 			errChan <- errors.New("failed to retrieve games")
@@ -137,11 +137,6 @@ func (api *LtdApi) RequestGames(date string, output chan<- Game, errChan chan<- 
 		}
 
 		offset += numWorkers * 50
-		if offset > 50000 {
-			lastDate := games[len(games)-1].Date
-			date = strings.Join(strings.Split(lastDate, "T"), "%20")
-			offset = worker * 50
-		}
 	}
 }
 
@@ -159,8 +154,8 @@ func (api *LtdApi) getUnits(version string) (*http.Response, error) {
 	return resp, err
 }
 
-func (api *LtdApi) getGames(offset int, date string) (*http.Response, error) {
-	pUrl := fmt.Sprintf(url, date, offset)
+func (api *LtdApi) getGames(offset int, startDate string, endDate string) (*http.Response, error) {
+	pUrl := fmt.Sprintf(url, startDate, endDate, offset)
 	req, err := http.NewRequest("GET", pUrl, nil)
 	if err != nil {
 		return nil, err
