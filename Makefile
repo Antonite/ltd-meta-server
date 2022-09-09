@@ -13,12 +13,12 @@ migrate:
 .PHONY: create-db
 create-db:
 	@ echo "Creating database..."
-	@ mysql -u antonite -e 'CREATE DATABASE $(DB_NAME)'
+	@ mysql -h ${DB_HOST} -P ${DB_PORT} -u antonite -e 'CREATE DATABASE $(DB_NAME)'
 
 .PHONY: drop-db
 drop-db:
 	@ echo "Dropping database..."
-	@ mysql -u antonite -e 'DROP DATABASE IF EXISTS $(DB_NAME)'
+	@ mysql -h ${DB_HOST} -P ${DB_PORT} -u antonite -e 'DROP DATABASE IF EXISTS $(DB_NAME)'
 
 .PHONY: rebuild-db
 rebuild-db: drop-db create-db migrate

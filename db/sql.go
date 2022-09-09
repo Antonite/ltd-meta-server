@@ -17,7 +17,8 @@ const database = "ltd"
 
 func New() (*sql.DB, error) {
 	pwd := os.Getenv("DB_PW")
-	connstring := fmt.Sprintf("%s:%s@/%s", user, pwd, database)
+	host := os.Getenv("DB_HOST")
+	connstring := fmt.Sprintf("%s:%s@tcp(%s:3306)/%s", user, pwd, host, database)
 	db, err := sql.Open("mysql", connstring)
 	if err != nil {
 		return nil, err
@@ -70,7 +71,6 @@ func CreateTable(db *sql.DB, name string) error {
 
 func GetTables(db *sql.DB) (map[string]bool, error) {
 	tables := make(map[string]bool)
-
 	rows, err := db.Query(allTables)
 	defer rows.Close()
 	if err != nil {

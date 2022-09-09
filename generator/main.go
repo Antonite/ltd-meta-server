@@ -179,7 +179,7 @@ func generateHistoricalData(srv *server.Server) error {
 
 	today := time.Now().UTC()
 	yesterday := today.Add(time.Hour * -24)
-	dateStart := fmt.Sprintf("%d-%02d-%02d%%2015:00:00.000Z", yesterday.Year(), yesterday.Month(), yesterday.Day())
+	dateStart := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", yesterday.Year(), yesterday.Month(), yesterday.Day())
 	dateEnd := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", today.Year(), today.Month(), today.Day())
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
