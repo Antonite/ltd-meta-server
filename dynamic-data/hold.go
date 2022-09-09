@@ -25,8 +25,8 @@ func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
 		return nil, err
 	}
 
+	var h Hold
 	for rows.Next() {
-		var h Hold
 		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.VersionAdded)
 		return &h, err
 	}
@@ -42,8 +42,8 @@ func FindHoldByID(db *sql.DB, tb string, id int) (*Hold, error) {
 		return nil, err
 	}
 
+	var h Hold
 	for rows.Next() {
-		var h Hold
 		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.VersionAdded)
 		return &h, err
 	}

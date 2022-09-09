@@ -115,7 +115,6 @@ func (api *LtdApi) RequestGames(startDate string, endDate string, output chan<- 
 	for {
 		// get units from api
 		resp, err := api.getGames(offset, startDate, endDate)
-		fmt.Printf("offset: %v\n", offset)
 		if err != nil || (resp.StatusCode != 200 && resp.StatusCode != 404) {
 			fmt.Println(resp)
 			errChan <- errors.New("failed to retrieve games")

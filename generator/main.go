@@ -19,9 +19,8 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const vers = "9.07.2"
 const waves = 10
-const holdMultipler = 1.2
+const holdMultipler = 1.75
 const workers = 20
 
 type analysis struct {
@@ -294,9 +293,13 @@ func generateHistoricalData(srv *server.Server) error {
 							}
 						} else {
 							if leaked {
-								s.Leaked = 1
+								s.Leaked += 1
 							} else {
-								s.Held = 1
+								s.Held += 1
+							}
+							err := srv.UpdateSend(stn, s)
+							if err != nil {
+								return err
 							}
 						}
 					}

@@ -28,12 +28,10 @@ func FindSends(db *sql.DB, tb string, id int, sends string) (*Send, error) {
 		return nil, err
 	}
 
+	var s Send
 	for rows.Next() {
-		var s Send
 		err = rows.Scan(&s.HoldsID, &s.Sends, &s.TotalMythium, &s.AdjustedValue, &s.Held, &s.Leaked)
-		if err != nil {
-			return &s, err
-		}
+		return &s, err
 	}
 
 	return nil, nil
@@ -95,7 +93,6 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 
 func getTopSends(db *sql.DB, tb string) ([]*Send, error) {
 	q := fmt.Sprintf(getTopSendsQuery, tb)
-	fmt.Println(q)
 	rows, err := db.Query(q)
 	defer rows.Close()
 	if err != nil {

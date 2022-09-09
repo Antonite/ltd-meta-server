@@ -31,6 +31,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 
 	mappedSends := make(map[int][]*Send)
 	mappedScores := make(map[int]float64)
+	totalgames := 0
 	for _, s := range sends {
 		if _, ok := mappedSends[s.HoldsID]; !ok {
 			mappedSends[s.HoldsID] = []*Send{}
@@ -39,23 +40,46 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		mappedSends[s.HoldsID] = append(mappedSends[s.HoldsID], s)
 		score := float64(s.AdjustedValue)
 		if s.Held != 0 {
-			score = score / (float64(s.Held) / float64(s.Held+s.Leaked))
+			score = score * (float64(s.Held) / float64(s.Held+s.Leaked))
 		}
+		totalgames += s.Held + s.Leaked
 		mappedScores[s.HoldsID] += score
 	}
 
 	for k, v := range mappedScores {
 		l := len(mappedSends[k])
+		// average
+		score := v / float64(l)
+		// punish for low varience in sends
+		if l == 1 {
+			score = score * 0.7
+		} else if l == 2 {
+			score = score * 0.8
+		} else if l == 3 {
+			score = score * 0.9
+		}
+		// punish for low number of games
+		if totalgames < 3 {
+			score = score * 0.7
+		} else if totalgames < 10 {
+			score = score * 0.8
+		} else if totalgames < 50 {
+			score = score * 0.9
+		}
+		sortedSends := mappedSends[k]
+		sort.Slice(sortedSends, func(i, j int) bool {
+			return sortedSends[i].TotalMythium < sortedSends[j].TotalMythium
+		})
 		stat := Stats{
-			Score: int(math.Ceil(v / float64(l))),
-			Sends: mappedSends[k],
+			Score: int(math.Ceil(score)),
+			Sends: sortedSends,
 			ID:    k,
 		}
 		stats = append(stats, stat)
 	}
 
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Score < stats[j].Score
+		return stats[i].Score > stats[j].Score
 	})
 	dupes := make(map[string]bool)
 	count := 0
