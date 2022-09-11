@@ -42,19 +42,19 @@ func main() {
 
 	fmt.Println("starting unit generation")
 	if err := generateUnits(srv); err != nil {
-		fmt.Println(err)
+		fmt.Printf("failed to generate units: %v\n", err)
 	}
 	fmt.Println("finished unit generation")
 
 	fmt.Println("starting table generation")
 	if err := generateTables(srv); err != nil {
-		fmt.Println(err)
+		fmt.Printf("failed to generate tables: %v\n", err)
 	}
 	fmt.Println("finished table generation")
 
 	fmt.Println("starting historical generation")
 	if err := generateHistoricalData(srv); err != nil {
-		fmt.Println(err)
+		fmt.Printf("failed to generate historical: %v\n", err)
 	}
 	fmt.Println("finished historical generation")
 }
@@ -207,7 +207,8 @@ func generateHistoricalData(srv *server.Server) error {
 					// find most expensive unit
 					anls, err := analyzeBoard(player, allUnits, allMercs, i)
 					if err != nil {
-						return err
+						fmt.Printf("failed to analyze board: %v\n", err)
+						continue
 					}
 
 					// get benchmark
@@ -251,7 +252,8 @@ func generateHistoricalData(srv *server.Server) error {
 						id := 0
 						h, err := srv.FindHold(htn, anls.positionHash)
 						if err != nil {
-							return err
+							fmt.Printf("failed to find hold: %v\n", err)
+							continue
 						}
 						if h == nil && leaked {
 							continue
@@ -265,7 +267,8 @@ func generateHistoricalData(srv *server.Server) error {
 							}
 							id, err = srv.SaveHold(htn, h)
 							if err != nil {
-								return err
+								fmt.Printf("failed to save hold: %v\n", err)
+								continue
 							}
 						} else {
 							id = h.ID
@@ -273,7 +276,8 @@ func generateHistoricalData(srv *server.Server) error {
 						stn := tn + "_sends"
 						s, err := srv.FindSends(stn, id, anls.sendHash)
 						if err != nil {
-							return err
+							fmt.Printf("failed to find send: %v\n", err)
+							continue
 						}
 						if s == nil {
 							newS := &dynamicdata.Send{
@@ -289,7 +293,8 @@ func generateHistoricalData(srv *server.Server) error {
 							}
 							err := srv.InsertSend(stn, newS)
 							if err != nil {
-								return err
+								fmt.Printf("failed to insert send: %v\n", err)
+								continue
 							}
 						} else {
 							if leaked {
@@ -299,7 +304,8 @@ func generateHistoricalData(srv *server.Server) error {
 							}
 							err := srv.UpdateSend(stn, s)
 							if err != nil {
-								return err
+								fmt.Printf("failed to update send: %v\n", err)
+								continue
 							}
 						}
 					}
@@ -308,7 +314,7 @@ func generateHistoricalData(srv *server.Server) error {
 		}
 	}
 	for err := range errChan {
-		fmt.Println(err)
+		fmt.Printf("error in error channel: %v\n", err)
 		return err
 	}
 
@@ -316,6 +322,7 @@ func generateHistoricalData(srv *server.Server) error {
 	for _, w := range benchmarks {
 		for _, v := range w {
 			if err := srv.SaveBenchmark(v); err != nil {
+				fmt.Printf("failed to save benchmark: %v\n", err)
 				return err
 			}
 		}

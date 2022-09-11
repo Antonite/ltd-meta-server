@@ -14,10 +14,10 @@ func GetAll(db *sql.DB) (map[string]*Unit, error) {
 	units := make(map[string]*Unit)
 
 	rows, err := db.Query(`SELECT unit_id, name, total_value, icon_path, version FROM unit`)
-	defer rows.Close()
 	if err != nil {
 		return units, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var aunit Unit
@@ -33,14 +33,14 @@ func (unit *Unit) Save(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
+
 	stmt, err := tx.Prepare("INSERT INTO unit(unit_id, name, icon_path, total_value, version) VALUES(?,?,?,?,?)")
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(unit.ID, unit.Name, unit.IconPath, unit.TotalValue, unit.Version)
 	if err != nil {
 		return err

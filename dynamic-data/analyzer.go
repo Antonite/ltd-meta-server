@@ -40,7 +40,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		mappedSends[s.HoldsID] = append(mappedSends[s.HoldsID], s)
 		score := float64(s.AdjustedValue)
 		if s.Held != 0 {
-			score = score * (float64(s.Held) / float64(s.Held+s.Leaked))
+			score = score * (1 + (1 - (float64(s.Held) / float64(s.Held+s.Leaked))))
 		}
 		totalgames += s.Held + s.Leaked
 		mappedScores[s.HoldsID] += score
@@ -52,19 +52,19 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		score := v / float64(l)
 		// punish for low varience in sends
 		if l == 1 {
-			score = score * 0.7
+			score = score * 1.2
 		} else if l == 2 {
-			score = score * 0.8
+			score = score * 1.1
 		} else if l == 3 {
-			score = score * 0.9
+			score = score * 1.05
 		}
 		// punish for low number of games
 		if totalgames < 3 {
-			score = score * 0.7
+			score = score * 1.2
 		} else if totalgames < 10 {
-			score = score * 0.8
+			score = score * 1.1
 		} else if totalgames < 50 {
-			score = score * 0.9
+			score = score * 1.05
 		}
 		sortedSends := mappedSends[k]
 		sort.Slice(sortedSends, func(i, j int) bool {
@@ -79,7 +79,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 	}
 
 	sort.Slice(stats, func(i, j int) bool {
-		return stats[i].Score > stats[j].Score
+		return stats[i].Score < stats[j].Score
 	})
 	dupes := make(map[string]bool)
 	count := 0

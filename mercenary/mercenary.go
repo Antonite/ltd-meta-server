@@ -15,10 +15,10 @@ func GetAll(db *sql.DB) (map[string]*Mercenary, error) {
 	units := make(map[string]*Mercenary)
 
 	rows, err := db.Query(`SELECT unit_id, name, mythium_cost, income_bonus, icon_path, version FROM mercenary`)
-	defer rows.Close()
 	if err != nil {
 		return units, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var aunit Mercenary
@@ -34,14 +34,14 @@ func (unit *Mercenary) Save(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
+
 	stmt, err := tx.Prepare("INSERT INTO mercenary(unit_id, name, icon_path, mythium_cost, income_bonus, version) VALUES(?,?,?,?,?,?)")
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(unit.ID, unit.Name, unit.IconPath, unit.MythiumCost, unit.IncomeBonus, unit.Version)
 	if err != nil {
 		return err

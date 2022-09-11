@@ -32,16 +32,16 @@ func CreateTable(db *sql.DB, name string) error {
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
+
 	holdsName := name + "_holds"
 	query := fmt.Sprintf(holdsQuery, holdsName)
 	stmt, err := tx.Prepare(query)
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec()
 	if err != nil {
 		return err
@@ -53,7 +53,6 @@ func CreateTable(db *sql.DB, name string) error {
 	if err != nil {
 		return err
 	}
-
 	defer sendsStmt.Close()
 
 	_, err = sendsStmt.Exec()
@@ -72,10 +71,10 @@ func CreateTable(db *sql.DB, name string) error {
 func GetTables(db *sql.DB) (map[string]bool, error) {
 	tables := make(map[string]bool)
 	rows, err := db.Query(allTables)
-	defer rows.Close()
 	if err != nil {
 		return tables, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var atable string
@@ -84,4 +83,10 @@ func GetTables(db *sql.DB) (map[string]bool, error) {
 	}
 
 	return tables, rows.Err()
+}
+
+func CloseRows(rows *sql.Rows) {
+	if rows != nil {
+		rows.Close()
+	}
 }

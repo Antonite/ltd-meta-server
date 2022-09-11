@@ -17,10 +17,10 @@ func GetAll(db *sql.DB) (map[int]map[string]*Benchmark, error) {
 	benchmarks := make(map[int]map[string]*Benchmark)
 
 	rows, err := db.Query(`SELECT id, wave, unit_id, value FROM benchmark`)
-	defer rows.Close()
 	if err != nil {
 		return benchmarks, err
 	}
+	defer rows.Close()
 
 	for rows.Next() {
 		var abenchmark Benchmark
@@ -46,14 +46,14 @@ func (bm *Benchmark) Save(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
+
 	stmt, err := tx.Prepare("INSERT INTO benchmark(wave, unit_id, value) VALUES(?,?,?)")
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(bm.Wave, bm.UnitId, bm.Value)
 	if err != nil {
 		return err
@@ -72,14 +72,14 @@ func (bm *Benchmark) update(db *sql.DB) error {
 	if err != nil {
 		return err
 	}
-
 	defer tx.Rollback()
+
 	stmt, err := tx.Prepare("UPDATE benchmark SET wave = ?, unit_id = ?, value = ? where id = ?")
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(bm.Wave, bm.UnitId, bm.Value, bm.ID)
 	if err != nil {
 		return err

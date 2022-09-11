@@ -20,10 +20,10 @@ type Hold struct {
 func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
 	q := fmt.Sprintf(getHoldsQuery, tb, hash)
 	rows, err := db.Query(q)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var h Hold
 	for rows.Next() {
@@ -37,10 +37,10 @@ func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
 func FindHoldByID(db *sql.DB, tb string, id int) (*Hold, error) {
 	q := fmt.Sprintf(getHoldsByIDQuery, tb, id)
 	rows, err := db.Query(q)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var h Hold
 	for rows.Next() {
@@ -63,8 +63,8 @@ func (h *Hold) SaveHold(db *sql.DB, tb string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-
 	defer stmt.Close()
+
 	resp, err := stmt.Exec(h.PositionHash, h.Position, h.TotalValue, h.VersionAdded)
 	if err != nil {
 		return 0, err

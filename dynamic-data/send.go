@@ -23,10 +23,10 @@ type Send struct {
 func FindSends(db *sql.DB, tb string, id int, sends string) (*Send, error) {
 	q := fmt.Sprintf(findSendQuery, tb, id, sends)
 	rows, err := db.Query(q)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	var s Send
 	for rows.Next() {
@@ -42,15 +42,15 @@ func (s *Send) InsertSend(db *sql.DB, tb string) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	q := fmt.Sprintf(insertSendsQuery, tb)
-	defer tx.Rollback()
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(s.HoldsID, s.Sends, s.TotalMythium, s.AdjustedValue, s.Held, s.Leaked)
 	if err != nil {
 		return err
@@ -69,15 +69,15 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 	if err != nil {
 		return err
 	}
+	defer tx.Rollback()
 
 	q := fmt.Sprintf(updateSendsQuery, tb, s.HoldsID, s.Sends)
-	defer tx.Rollback()
 	stmt, err := tx.Prepare(q)
 	if err != nil {
 		return err
 	}
-
 	defer stmt.Close()
+
 	_, err = stmt.Exec(s.Held, s.Leaked)
 	if err != nil {
 		return err
@@ -94,10 +94,10 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 func getTopSends(db *sql.DB, tb string) ([]*Send, error) {
 	q := fmt.Sprintf(getTopSendsQuery, tb)
 	rows, err := db.Query(q)
-	defer rows.Close()
 	if err != nil {
 		return nil, err
 	}
+	defer rows.Close()
 
 	sends := []*Send{}
 	for rows.Next() {
