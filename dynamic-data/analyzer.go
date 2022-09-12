@@ -99,7 +99,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		s.TotalValue = h.TotalValue
 		s.VersionAdded = h.VersionAdded
 		output = append(output, s)
-		if count >= 100 {
+		if count >= 20 {
 			break
 		}
 	}

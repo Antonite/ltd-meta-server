@@ -40,23 +40,23 @@ func main() {
 		panic("failed to create server")
 	}
 
-	fmt.Println("starting unit generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": starting unit generation")
 	if err := generateUnits(srv); err != nil {
 		fmt.Printf("failed to generate units: %v\n", err)
 	}
-	fmt.Println("finished unit generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished unit generation")
 
-	fmt.Println("starting table generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": starting table generation")
 	if err := generateTables(srv); err != nil {
 		fmt.Printf("failed to generate tables: %v\n", err)
 	}
-	fmt.Println("finished table generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished table generation")
 
-	fmt.Println("starting historical generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": starting historical generation")
 	if err := generateHistoricalData(srv); err != nil {
 		fmt.Printf("failed to generate historical: %v\n", err)
 	}
-	fmt.Println("finished historical generation")
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
 }
 
 func generateTables(srv *server.Server) error {
