@@ -21,7 +21,7 @@ import (
 
 const waves = 10
 const holdMultipler = 1.75
-const workers = 20
+const workers = 5
 
 type analysis struct {
 	biggestUnitID  string
@@ -35,6 +35,8 @@ type analysis struct {
 }
 
 func main() {
+	start := time.Now()
+
 	srv, err := server.New()
 	if err != nil {
 		panic("failed to create server")
@@ -57,6 +59,9 @@ func main() {
 		fmt.Printf("failed to generate historical: %v\n", err)
 	}
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
+
+	totalTime := start.Sub(time.Now())
+	fmt.Printf("total processing time: %vh %vm", math.Floor(totalTime.Hours()), math.Floor(totalTime.Minutes()))
 }
 
 func generateTables(srv *server.Server) error {
@@ -183,6 +188,7 @@ func generateHistoricalData(srv *server.Server) error {
 	games := make(chan ltdapi.Game)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
+	limiter := time.Tick(10 * time.Millisecond)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
@@ -192,7 +198,14 @@ func generateHistoricalData(srv *server.Server) error {
 		close(games)
 		close(errChan)
 	}(wg, games, errChan)
+	gamesProcessed := 0
+	timeMarker := time.Now()
 	for g := range games {
+		gamesProcessed++
+		if gamesProcessed%1000 == 0 {
+			fmt.Printf("processed %v games, rate: %v games per second \n", gamesProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())))
+			timeMarker = time.Now()
+		}
 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
 			continue
 		}
@@ -228,85 +241,89 @@ func generateHistoricalData(srv *server.Server) error {
 						fmt.Printf("new unit - wave: %v unit: %v\n", i+1, anls.biggestUnitID)
 					}
 					// check if hold is good enough
-					if float64(anls.adjustedValue) < float64(bn.Value)*holdMultipler || bn.Value == 0 {
-						bn.Mu.Lock()
-						leaked := len(player.LeaksPerWave[i]) > 0
-						if !leaked {
-							// check hydra case
-							if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
-								fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
-								// don't consider broken eggs as a hold
-								if !fullHydra {
-									leaked = true
-								}
+					if float64(anls.adjustedValue) > float64(bn.Value)*holdMultipler && bn.Value != 0 {
+						continue
+					}
+
+					bn.Mu.Lock()
+					leaked := len(player.LeaksPerWave[i]) > 0
+					if !leaked {
+						// check hydra case
+						if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
+							fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
+							// don't consider broken eggs as a hold
+							if !fullHydra {
+								leaked = true
 							}
 						}
-						if !leaked {
-							if bn.Value == 0 || bn.Value > anls.adjustedValue {
-								bn.Value = anls.adjustedValue
-							}
+					}
+					if !leaked {
+						if bn.Value == 0 || bn.Value > anls.adjustedValue {
+							bn.Value = anls.adjustedValue
 						}
-						bn.Mu.Unlock()
-						tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
-						htn := tn + "_holds"
-						id := 0
-						h, err := srv.FindHold(htn, anls.positionHash)
+					}
+					bn.Mu.Unlock()
+					tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
+					htn := tn + "_holds"
+					id := 0
+					// throttle
+					<-limiter
+					h, err := srv.FindHold(htn, anls.positionHash)
+					if err != nil {
+						fmt.Printf("failed to find hold: %v\n", err)
+						continue
+					}
+					if h == nil && leaked {
+						continue
+					}
+					if h == nil {
+						h = &dynamicdata.Hold{
+							PositionHash: anls.positionHash,
+							Position:     anls.position,
+							TotalValue:   anls.TotalValue,
+							VersionAdded: srv.Version,
+						}
+						id, err = srv.SaveHold(htn, h)
 						if err != nil {
-							fmt.Printf("failed to find hold: %v\n", err)
+							fmt.Printf("failed to save hold: %v\n", err)
 							continue
 						}
-						if h == nil && leaked {
-							continue
+					} else {
+						id = h.ID
+					}
+					stn := tn + "_sends"
+					s, err := srv.FindSends(stn, id, anls.sendHash)
+					if err != nil {
+						fmt.Printf("failed to find send: %v\n", err)
+						continue
+					}
+					if s == nil {
+						newS := &dynamicdata.Send{
+							HoldsID:       id,
+							Sends:         anls.sendHash,
+							TotalMythium:  anls.TotalMythium,
+							AdjustedValue: anls.adjustedValue,
 						}
-						if h == nil {
-							h = &dynamicdata.Hold{
-								PositionHash: anls.positionHash,
-								Position:     anls.position,
-								TotalValue:   anls.TotalValue,
-								VersionAdded: srv.Version,
-							}
-							id, err = srv.SaveHold(htn, h)
-							if err != nil {
-								fmt.Printf("failed to save hold: %v\n", err)
-								continue
-							}
+						if leaked {
+							newS.Leaked = 1
 						} else {
-							id = h.ID
+							newS.Held = 1
 						}
-						stn := tn + "_sends"
-						s, err := srv.FindSends(stn, id, anls.sendHash)
+						err := srv.InsertSend(stn, newS)
 						if err != nil {
-							fmt.Printf("failed to find send: %v\n", err)
+							fmt.Printf("failed to insert send: %v\n", err)
 							continue
 						}
-						if s == nil {
-							newS := &dynamicdata.Send{
-								HoldsID:       id,
-								Sends:         anls.sendHash,
-								TotalMythium:  anls.TotalMythium,
-								AdjustedValue: anls.adjustedValue,
-							}
-							if leaked {
-								newS.Leaked = 1
-							} else {
-								newS.Held = 1
-							}
-							err := srv.InsertSend(stn, newS)
-							if err != nil {
-								fmt.Printf("failed to insert send: %v\n", err)
-								continue
-							}
+					} else {
+						if leaked {
+							s.Leaked += 1
 						} else {
-							if leaked {
-								s.Leaked += 1
-							} else {
-								s.Held += 1
-							}
-							err := srv.UpdateSend(stn, s)
-							if err != nil {
-								fmt.Printf("failed to update send: %v\n", err)
-								continue
-							}
+							s.Held += 1
+						}
+						err := srv.UpdateSend(stn, s)
+						if err != nil {
+							fmt.Printf("failed to update send: %v\n", err)
+							continue
 						}
 					}
 				}

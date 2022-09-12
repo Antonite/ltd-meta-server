@@ -38,10 +38,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		}
 
 		mappedSends[s.HoldsID] = append(mappedSends[s.HoldsID], s)
-		score := float64(s.AdjustedValue)
-		if s.Held != 0 {
-			score = score * (1 + (1 - (float64(s.Held) / float64(s.Held+s.Leaked))))
-		}
+		score := float64(s.AdjustedValue) * (1 + (1 - (float64(s.Held) / float64(s.Held+s.Leaked))))
 		totalgames += s.Held + s.Leaked
 		mappedScores[s.HoldsID] += score
 	}

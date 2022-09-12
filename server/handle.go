@@ -57,7 +57,7 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 		}
 		cachedStats = CachedStat{
 			stats: stats,
-			exp:   time.Now().Add(time.Hour * 24),
+			exp:   time.Now().Add(time.Hour * 6),
 		}
 		s.Stats[wave][sr.Id] = cachedStats
 	} else {
