@@ -49,16 +49,20 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		score := v / float64(l)
 		// punish for low varience in sends
 		if l == 1 {
-			score = score * 1.2
+			score = score * 1.3
 		} else if l == 2 {
-			score = score * 1.1
+			score = score * 1.2
 		} else if l == 3 {
-			score = score * 1.05
+			score = score * 1.1
 		}
 		// punish for low number of games
-		if totalgames < 3 {
-			score = score * 1.2
+		if totalgames == 1 {
+			score = score * 1.3
+		} else if totalgames < 5 {
+			score = score * 1.25
 		} else if totalgames < 10 {
+			score = score * 1.2
+		} else if totalgames < 25 {
 			score = score * 1.1
 		} else if totalgames < 50 {
 			score = score * 1.05

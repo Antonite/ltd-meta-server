@@ -10,7 +10,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/antonite/ltd-meta-server/benchmark"
 	dynamicdata "github.com/antonite/ltd-meta-server/dynamic-data"
 	"github.com/antonite/ltd-meta-server/ltdapi"
 	"github.com/antonite/ltd-meta-server/mercenary"
@@ -19,9 +18,9 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const waves = 10
-const holdMultipler = 1.75
-const workers = 5
+const waves = 8
+const workers = 1
+const usable_value = 60
 
 type analysis struct {
 	biggestUnitID  string
@@ -61,7 +60,7 @@ func main() {
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
 
 	totalTime := start.Sub(time.Now())
-	fmt.Printf("total processing time: %vh %vm", math.Floor(totalTime.Hours()), math.Floor(totalTime.Minutes()))
+	fmt.Printf("total processing time: %vh %vm\n", math.Floor(totalTime.Hours()), math.Floor(totalTime.Minutes()))
 }
 
 func generateTables(srv *server.Server) error {
@@ -71,6 +70,9 @@ func generateTables(srv *server.Server) error {
 	}
 
 	for k, v := range savedUnits {
+		if !v.Usable {
+			continue
+		}
 		n := strings.TrimSuffix(k, "unit_id")
 		for i := 1; i <= waves; i++ {
 			if i == 1 && v.TotalValue >= util.CashoutGold {
@@ -145,11 +147,16 @@ func generateUnits(srv *server.Server) error {
 				if err != nil {
 					return errors.New(fmt.Sprintf("failed to convert unit total value: %s", u.UnitId))
 				}
+				usable := val >= usable_value
+				if u.UnitId == "hell_raiser_buffed_unit_id" {
+					u.Name = "Hell Raiser (Tantrum)"
+				}
 				newUnit := unit.Unit{
-					ID:         u.UnitId,
+					UnitID:     u.UnitId,
 					Name:       u.Name,
 					IconPath:   u.IconPath,
 					TotalValue: val,
+					Usable:     usable,
 					Version:    u.Version,
 				}
 				if err := srv.SaveUnit(&newUnit); err != nil {
@@ -176,8 +183,7 @@ func generateHistoricalData(srv *server.Server) error {
 		return err
 	}
 
-	benchmarks, err := srv.Getbenchmarks()
-	if err != nil {
+	if err := srv.RefreshTables(); err != nil {
 		return err
 	}
 
@@ -185,10 +191,10 @@ func generateHistoricalData(srv *server.Server) error {
 	yesterday := today.Add(time.Hour * -24)
 	dateStart := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", yesterday.Year(), yesterday.Month(), yesterday.Day())
 	dateEnd := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", today.Year(), today.Month(), today.Day())
-	games := make(chan ltdapi.Game)
+	games := make(chan ltdapi.Game, 500)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
-	limiter := time.Tick(10 * time.Millisecond)
+	limiter := time.Tick(40 * time.Millisecond)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
@@ -203,7 +209,7 @@ func generateHistoricalData(srv *server.Server) error {
 	for g := range games {
 		gamesProcessed++
 		if gamesProcessed%1000 == 0 {
-			fmt.Printf("processed %v games, rate: %v games per second \n", gamesProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())))
+			fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v games, rate: %v games per second \n", gamesProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100)/100)
 			timeMarker = time.Now()
 		}
 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
@@ -224,28 +230,6 @@ func generateHistoricalData(srv *server.Server) error {
 						continue
 					}
 
-					// get benchmark
-					if _, ok := benchmarks[i+1]; !ok {
-						benchmarks[i+1] = make(map[string]*benchmark.Benchmark)
-					}
-
-					bn, ok := benchmarks[i+1][anls.biggestUnitID]
-					if !ok {
-						bn = &benchmark.Benchmark{
-							Wave:   i + 1,
-							UnitId: anls.biggestUnitID,
-							Value:  0,
-							Mu:     &sync.Mutex{},
-						}
-						benchmarks[i+1][anls.biggestUnitID] = bn
-						fmt.Printf("new unit - wave: %v unit: %v\n", i+1, anls.biggestUnitID)
-					}
-					// check if hold is good enough
-					if float64(anls.adjustedValue) > float64(bn.Value)*holdMultipler && bn.Value != 0 {
-						continue
-					}
-
-					bn.Mu.Lock()
 					leaked := len(player.LeaksPerWave[i]) > 0
 					if !leaked {
 						// check hydra case
@@ -257,14 +241,13 @@ func generateHistoricalData(srv *server.Server) error {
 							}
 						}
 					}
-					if !leaked {
-						if bn.Value == 0 || bn.Value > anls.adjustedValue {
-							bn.Value = anls.adjustedValue
-						}
-					}
-					bn.Mu.Unlock()
+
 					tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
 					htn := tn + "_holds"
+					if !srv.Tables[htn] {
+						continue
+					}
+
 					id := 0
 					// throttle
 					<-limiter
@@ -283,6 +266,8 @@ func generateHistoricalData(srv *server.Server) error {
 							TotalValue:   anls.TotalValue,
 							VersionAdded: srv.Version,
 						}
+						// throttle
+						<-limiter
 						id, err = srv.SaveHold(htn, h)
 						if err != nil {
 							fmt.Printf("failed to save hold: %v\n", err)
@@ -292,6 +277,8 @@ func generateHistoricalData(srv *server.Server) error {
 						id = h.ID
 					}
 					stn := tn + "_sends"
+					// throttle
+					<-limiter
 					s, err := srv.FindSends(stn, id, anls.sendHash)
 					if err != nil {
 						fmt.Printf("failed to find send: %v\n", err)
@@ -309,6 +296,8 @@ func generateHistoricalData(srv *server.Server) error {
 						} else {
 							newS.Held = 1
 						}
+						// throttle
+						<-limiter
 						err := srv.InsertSend(stn, newS)
 						if err != nil {
 							fmt.Printf("failed to insert send: %v\n", err)
@@ -320,6 +309,8 @@ func generateHistoricalData(srv *server.Server) error {
 						} else {
 							s.Held += 1
 						}
+						// throttle
+						<-limiter
 						err := srv.UpdateSend(stn, s)
 						if err != nil {
 							fmt.Printf("failed to update send: %v\n", err)
@@ -333,16 +324,6 @@ func generateHistoricalData(srv *server.Server) error {
 	for err := range errChan {
 		fmt.Printf("error in error channel: %v\n", err)
 		return err
-	}
-
-	// save benchmarks
-	for _, w := range benchmarks {
-		for _, v := range w {
-			if err := srv.SaveBenchmark(v); err != nil {
-				fmt.Printf("failed to save benchmark: %v\n", err)
-				return err
-			}
-		}
 	}
 
 	return nil
@@ -365,18 +346,20 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		}
 		if expCost < existing.TotalValue {
 			expCost = existing.TotalValue
-			anls.biggestUnitID = existing.ID
+			anls.biggestUnitID = existing.UnitID
 			anls.biggestUnitPos = u
 		}
 
-		hash, err := adjustUnit(u, diff)
+		hash, org, err := adjustUnit(u, diff, allUnits)
 		if err != nil {
 			return anls, err
 		}
 		anls.positionHash += hash + ","
+		anls.position += org + ","
 	}
 	anls.TotalValue += player.ValuePerWave[index]
 	anls.positionHash = strings.TrimSuffix(anls.positionHash, ",")
+	anls.position = strings.TrimSuffix(anls.position, ",")
 	if anls.biggestUnitID == "" {
 		return anls, errors.New("failed to compute most expensive unit")
 	}
@@ -400,114 +383,18 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 	sort.Strings(player.MercenariesReceivedPerWave[index])
 	anls.sendHash = strings.Join(player.MercenariesReceivedPerWave[index], ",")
 
-	anls.position = strings.Join(player.BuildPerWave[index], ",")
-
 	return anls, nil
 }
 
-func adjustUnit(u string, diff float64) (string, error) {
+func adjustUnit(u string, diff float64, allUnits map[string]*unit.Unit) (string, string, error) {
 	build := strings.Split(u, ":")
 	pos := strings.Split(build[1], "|")
 	y, err := strconv.ParseFloat(pos[1], 64)
 	if err != nil {
-		return "", err
+		return "", "", err
 	}
-	adjusted := int(y - diff)
-	return fmt.Sprintf("%s:%s|%v:%s", build[0], pos[0], adjusted, build[2]), nil
+	adjusted := math.Round((y-diff)*10) / 10
+	adjStr := fmt.Sprintf("%v:%s|%v:%s", allUnits[build[0]].ID, pos[0], adjusted, build[2])
+	orgStr := fmt.Sprintf("%v:%s:%s", allUnits[build[0]].ID, build[1], build[2])
+	return adjStr, orgStr, nil
 }
-
-// func initialBenchMark(srv *server.Server) error {
-// 	allUnits, err := srv.GetUnits()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	allMercs, err := srv.GetMercs()
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	benchmarks := make(map[string]*benchmark.Benchmark)
-// 	for u := range allUnits {
-// 		for i := 1; i <= waves; i++ {
-// 			if i == 1 && allUnits[u].TotalValue > util.CashoutGold {
-// 				continue
-// 			}
-// 			bn := util.GenerateUnitTableName(u, i)
-// 			b := benchmark.Benchmark{
-// 				Wave:   i,
-// 				UnitId: u,
-// 				Value:  0,
-// 				Mu:     &sync.Mutex{},
-// 			}
-// 			benchmarks[bn] = &b
-// 		}
-// 	}
-
-// 	// get games
-// 	date := "2022-09-07%2015:00:00.000Z"
-// 	games := make(chan ltdapi.Game)
-// 	errChan := make(chan error, 1)
-// 	wg := &sync.WaitGroup{}
-// 	for w := 0; w < workers; w++ {
-// 		wg.Add(1)
-// 		go srv.Api.RequestGames(date, games, errChan, wg, w, workers)
-// 	}
-// 	go func(wg *sync.WaitGroup, games chan ltdapi.Game, errChan chan error) {
-// 		wg.Wait()
-// 		close(games)
-// 		close(errChan)
-// 	}(wg, games, errChan)
-// 	for g := range games {
-// 		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
-// 			continue
-// 		}
-// 		for _, player := range g.PlayersData {
-// 			if player.Cross {
-// 				continue
-// 			}
-
-// 			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
-// 				// nothing leaked
-// 				if len(player.LeaksPerWave[i]) == 0 {
-// 					// find most expensive unit
-// 					anls, err := analyzeBoard(player, allUnits, allMercs, i)
-// 					if err != nil {
-// 						return err
-// 					}
-// 					// check hydra case
-// 					if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
-// 						fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
-// 						// don't consider broken eggs as a hold
-// 						if !fullHydra {
-// 							continue
-// 						}
-// 					}
-
-// 					// get table name
-// 					bn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
-// 					// assign new benchmark
-// 					benchmarks[bn].Mu.Lock()
-// 					if benchmarks[bn].Value == 0 || benchmarks[bn].Value > anls.TotalValue {
-// 						newBm := benchmarks[bn]
-// 						newBm.Value = anls.TotalValue
-// 						benchmarks[bn] = newBm
-// 					}
-// 					benchmarks[bn].Mu.Unlock()
-// 				}
-// 			}
-// 		}
-// 	}
-// 	for err := range errChan {
-// 		return err
-// 	}
-
-// 	// save benchmarks
-// 	for _, b := range benchmarks {
-// 		if err := srv.SaveBenchmark(b); err != nil {
-// 			return err
-// 		}
-// 	}
-
-// 	return nil
-// }
