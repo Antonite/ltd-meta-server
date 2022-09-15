@@ -60,7 +60,9 @@ func main() {
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
 
 	totalTime := start.Sub(time.Now())
-	fmt.Printf("total processing time: %vh %vm\n", math.Floor(totalTime.Hours()), math.Floor(totalTime.Minutes()))
+	hours := math.Floor(totalTime.Hours())
+	minutes := math.Floor(totalTime.Minutes()) - hours*60
+	fmt.Printf("total processing time: %vh %vm\n", hours, minutes)
 }
 
 func generateTables(srv *server.Server) error {
@@ -194,7 +196,7 @@ func generateHistoricalData(srv *server.Server) error {
 	games := make(chan ltdapi.Game, 500)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
-	limiter := time.Tick(40 * time.Millisecond)
+	limiter := time.Tick(60 * time.Millisecond)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
