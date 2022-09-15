@@ -196,7 +196,7 @@ func generateHistoricalData(srv *server.Server) error {
 	games := make(chan ltdapi.Game, 500)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
-	limiter := time.Tick(60 * time.Millisecond)
+	limiter := time.Tick(150 * time.Millisecond)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
