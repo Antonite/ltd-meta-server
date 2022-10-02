@@ -405,6 +405,7 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 					dbSend.Held += s.Held
 					dbSend.Leaked += s.Leaked
 					dbSend.LeakedAmount += s.LeakedAmount
+
 					err := srv.UpdateSend(stn, dbSend)
 					if err != nil {
 						fmt.Printf("failed to update send: %s, tn: %s, err: %v\n", s.Sends, stn, err)

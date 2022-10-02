@@ -10,6 +10,8 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
+const cacheTimeout = 24
+
 func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Access-Control-Allow-Origin", "*")
 	w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT")
@@ -57,7 +59,7 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 		}
 		cachedStats = CachedStat{
 			stats: stats,
-			exp:   time.Now().Add(time.Hour * 6),
+			exp:   time.Now().Add(time.Hour * cacheTimeout),
 		}
 		s.Stats[wave][sr.Id] = cachedStats
 	} else {

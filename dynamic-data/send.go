@@ -7,7 +7,7 @@ import (
 
 const findSendQuery = `SELECT id, holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount FROM %s where holds_id = %v and sends = '%s'`
 const insertSendsQuery = `INSERT INTO %s(holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount) VALUES(?,?,?,?,?,?,?)`
-const updateSendsQuery = `UPDATE %s SET held = ?, leaked = ? where id = ?`
+const updateSendsQuery = `UPDATE %s SET held = ?, leaked = ?, leaked_amount = ? where id = ?`
 const getTopSendsQuery = `SELECT holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount FROM %s`
 
 type Send struct {
@@ -19,6 +19,9 @@ type Send struct {
 	Held          int
 	Leaked        int
 	LeakedAmount  int
+
+	// not saved
+	LeakedRatio int
 }
 
 func FindSend(db *sql.DB, tb string, id int, sends string) (*Send, error) {
@@ -84,7 +87,7 @@ func (s *Send) UpdateSend(db *sql.DB, tb string) error {
 	}
 	defer stmt.Close()
 
-	_, err = stmt.Exec(s.Held, s.Leaked, s.ID)
+	_, err = stmt.Exec(s.Held, s.Leaked, s.LeakedAmount, s.ID)
 	if err != nil {
 		return err
 	}

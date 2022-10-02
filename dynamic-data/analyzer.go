@@ -47,7 +47,12 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		}
 
 		mappedSends[s.HoldsID] = append(mappedSends[s.HoldsID], s)
-		score := float64(s.AdjustedValue) * (1 + ((1 - (float64(s.Held) / float64(s.Held+s.Leaked))) * 4 * (float64(s.LeakedAmount) / bounties[wave])))
+		leakRate := 0.0
+		if s.Leaked > 0 {
+			leakRate = (float64(s.LeakedAmount) / float64(s.Leaked) / bounties[wave])
+		}
+		score := float64(s.AdjustedValue) * (1 + ((1 - (float64(s.Held) / float64(s.Held+s.Leaked))) * 4 * leakRate))
+		s.LeakedRatio = int(math.Floor(leakRate * 100))
 		totalgames[s.HoldsID] += s.Held + s.Leaked
 		mappedScores[s.HoldsID] += score
 		if (smallestScores[s.HoldsID] > score || smallestScores[s.HoldsID] == 0) && s.Held != 0 {
