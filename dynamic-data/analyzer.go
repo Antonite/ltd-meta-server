@@ -16,6 +16,7 @@ type Stats struct {
 	Sends        []*Send
 	Position     string
 	TotalValue   int
+	Winrate      int
 	VersionAdded string
 }
 
@@ -116,6 +117,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 			winrate = float64(h.Won) / (float64(h.Won) + float64(h.Lost))
 		}
 
+		stats[i].Winrate = int(math.Floor(winrate * 100))
 		stats[i].Score = int(math.Ceil((1 + 0.5*(1-winrate)) * float64(stats[i].Score)))
 		top200 = append(top200, stats[i])
 	}
