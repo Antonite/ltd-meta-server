@@ -25,14 +25,15 @@ type Game struct {
 	Date        string
 	QueueType   string
 	EndingWave  int
+	Version     string
 }
 
 type PlayersData struct {
-	Cross                      bool
 	MercenariesReceivedPerWave [][]string
 	LeaksPerWave               [][]string
 	BuildPerWave               [][]string
 	ValuePerWave               []int
+	GameResult                 string
 }
 
 type Unit struct {

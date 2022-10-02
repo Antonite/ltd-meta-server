@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,8 +20,8 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const waves = 8
-const workers = 1
+const waves = 5
+const workers = 20
 const usable_value = 60
 
 type analysis struct {
@@ -54,12 +56,16 @@ func main() {
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished table generation")
 
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": starting historical generation")
-	if err := generateHistoricalData(srv); err != nil {
+	daysAgo, err := strconv.Atoi(os.Args[1])
+	if err != nil {
+		panic("failed to parse input param")
+	}
+	if err := generateHistoricalData(srv, daysAgo); err != nil {
 		fmt.Printf("failed to generate historical: %v\n", err)
 	}
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
 
-	totalTime := start.Sub(time.Now())
+	totalTime := time.Now().Sub(start)
 	hours := math.Floor(totalTime.Hours())
 	minutes := math.Floor(totalTime.Minutes()) - hours*60
 	fmt.Printf("total processing time: %vh %vm\n", hours, minutes)
@@ -174,7 +180,7 @@ func generateUnits(srv *server.Server) error {
 	return nil
 }
 
-func generateHistoricalData(srv *server.Server) error {
+func generateHistoricalData(srv *server.Server, daysAgo int) error {
 	allUnits, err := srv.GetUnits()
 	if err != nil {
 		return err
@@ -189,14 +195,21 @@ func generateHistoricalData(srv *server.Server) error {
 		return err
 	}
 
-	today := time.Now().UTC()
+	bounties := make(map[string]int)
+	bounties["Crab"] = 6
+	bounties["Wale"] = 7
+	bounties["Hopper"] = 5
+	bounties["Flying Chicken"] = 8
+	bounties["Scorpion"] = 9
+	bounties["Scorpion King"] = 36
+
+	today := time.Now().UTC().Add(time.Hour * -24 * time.Duration(daysAgo-1))
 	yesterday := today.Add(time.Hour * -24)
 	dateStart := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", yesterday.Year(), yesterday.Month(), yesterday.Day())
 	dateEnd := fmt.Sprintf("%d-%02d-%02d%%2000:00:00.000Z", today.Year(), today.Month(), today.Day())
 	games := make(chan ltdapi.Game, 500)
 	errChan := make(chan error, 1)
 	wg := &sync.WaitGroup{}
-	limiter := time.Tick(150 * time.Millisecond)
 	for w := 0; w < workers; w++ {
 		wg.Add(1)
 		go srv.Api.RequestGames(dateStart, dateEnd, games, errChan, wg, w, workers)
@@ -208,20 +221,40 @@ func generateHistoricalData(srv *server.Server) error {
 	}(wg, games, errChan)
 	gamesProcessed := 0
 	timeMarker := time.Now()
+
+	// temp maps
+	holds := make(map[int]map[string]*dynamicdata.Hold)
+	holds[0] = make(map[string]*dynamicdata.Hold)
+	holds[1] = make(map[string]*dynamicdata.Hold)
+	holds[2] = make(map[string]*dynamicdata.Hold)
+	holds[3] = make(map[string]*dynamicdata.Hold)
+	holds[4] = make(map[string]*dynamicdata.Hold)
+	sends := make(map[int]map[string]map[string]*dynamicdata.Send)
+	sends[0] = make(map[string]map[string]*dynamicdata.Send)
+	sends[1] = make(map[string]map[string]*dynamicdata.Send)
+	sends[2] = make(map[string]map[string]*dynamicdata.Send)
+	sends[3] = make(map[string]map[string]*dynamicdata.Send)
+	sends[4] = make(map[string]map[string]*dynamicdata.Send)
+
+	// version regex
+	reg, err := regexp.Compile("v[0-9]+.[0-9]+.[0-9]")
+	if err != nil {
+		return err
+	}
+
 	for g := range games {
 		gamesProcessed++
 		if gamesProcessed%1000 == 0 {
 			fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v games, rate: %v games per second \n", gamesProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100)/100)
 			timeMarker = time.Now()
 		}
-		if (g.QueueType != "Normal" && g.QueueType != "Classic") || g.EndingWave <= 1 {
+		if g.QueueType != "Normal" || g.EndingWave <= 1 {
+			continue
+		}
+		if !reg.MatchString(g.Version) {
 			continue
 		}
 		for _, player := range g.PlayersData {
-			if player.Cross {
-				continue
-			}
-
 			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
 				// something was sent and built
 				if len(player.MercenariesReceivedPerWave[i]) > 0 && len(player.BuildPerWave[i]) > 0 {
@@ -244,79 +277,60 @@ func generateHistoricalData(srv *server.Server) error {
 						}
 					}
 
+					// check if we care about this unit
 					tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
 					htn := tn + "_holds"
 					if !srv.Tables[htn] {
 						continue
 					}
 
-					id := 0
-					// throttle
-					<-limiter
-					h, err := srv.FindHold(htn, anls.positionHash)
-					if err != nil {
-						fmt.Printf("failed to find hold: %v\n", err)
-						continue
-					}
-					if h == nil && leaked {
-						continue
-					}
-					if h == nil {
+					h, ok := holds[i][anls.positionHash]
+					won := player.GameResult == "won"
+					if !ok {
 						h = &dynamicdata.Hold{
 							PositionHash: anls.positionHash,
 							Position:     anls.position,
 							TotalValue:   anls.TotalValue,
-							VersionAdded: srv.Version,
+							VersionAdded: g.Version,
+							BiggestUnit:  anls.biggestUnitID,
 						}
-						// throttle
-						<-limiter
-						id, err = srv.SaveHold(htn, h)
-						if err != nil {
-							fmt.Printf("failed to save hold: %v\n", err)
-							continue
-						}
+						holds[i][anls.positionHash] = h
+					}
+					if won {
+						h.Won++
 					} else {
-						id = h.ID
+						h.Lost++
 					}
-					stn := tn + "_sends"
-					// throttle
-					<-limiter
-					s, err := srv.FindSends(stn, id, anls.sendHash)
-					if err != nil {
-						fmt.Printf("failed to find send: %v\n", err)
-						continue
+
+					sMap, ok := sends[i][anls.positionHash]
+					if !ok {
+						sMap = make(map[string]*dynamicdata.Send)
+						sends[i][anls.positionHash] = sMap
 					}
-					if s == nil {
-						newS := &dynamicdata.Send{
-							HoldsID:       id,
+					s, ok := sMap[anls.sendHash]
+					if !ok {
+						s = &dynamicdata.Send{
 							Sends:         anls.sendHash,
 							TotalMythium:  anls.TotalMythium,
 							AdjustedValue: anls.adjustedValue,
 						}
-						if leaked {
-							newS.Leaked = 1
-						} else {
-							newS.Held = 1
-						}
-						// throttle
-						<-limiter
-						err := srv.InsertSend(stn, newS)
-						if err != nil {
-							fmt.Printf("failed to insert send: %v\n", err)
-							continue
-						}
+						sMap[anls.sendHash] = s
+					}
+					if leaked {
+						s.Leaked++
 					} else {
-						if leaked {
-							s.Leaked += 1
+						s.Held++
+					}
+
+					for _, leak := range player.LeaksPerWave[i] {
+						m, ok := allMercs[leak]
+						if ok {
+							s.LeakedAmount += m.IncomeBonus
 						} else {
-							s.Held += 1
-						}
-						// throttle
-						<-limiter
-						err := srv.UpdateSend(stn, s)
-						if err != nil {
-							fmt.Printf("failed to update send: %v\n", err)
-							continue
+							m, ok := bounties[leak]
+							if ok {
+								s.LeakedAmount += m
+							}
 						}
 					}
 				}
@@ -326,6 +340,80 @@ func generateHistoricalData(srv *server.Server) error {
 	for err := range errChan {
 		fmt.Printf("error in error channel: %v\n", err)
 		return err
+	}
+
+	holdsProcessed := 0
+	for i := 0; i < waves; i++ {
+		for _, h := range holds[i] {
+			holdsProcessed++
+			if holdsProcessed%1000 == 0 {
+				fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v holds, rate: %v holds per second \n", holdsProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100)/100)
+				timeMarker = time.Now()
+			}
+
+			allS, ok := sends[i][h.PositionHash]
+			if !ok {
+				continue
+			}
+
+			// update hold
+			tn := util.GenerateUnitTableName(h.BiggestUnit, i+1)
+			htn := tn + "_holds"
+			dbHold, err := srv.FindHold(htn, h.PositionHash)
+			if err != nil {
+				fmt.Printf("failed to find hold: %s, tn: %s, err: %v\n", h.PositionHash, htn, err)
+				// todo: add retries
+				continue
+			}
+			if dbHold == nil {
+				id, err := srv.SaveHold(htn, h)
+				if err != nil || id == 0 {
+					fmt.Printf("failed to save hold: %s, tn: %s, err: %v\n", h.PositionHash, htn, err)
+					// todo: add retries
+					continue
+				}
+				h.ID = id
+				dbHold = h
+			} else {
+				dbHold.Won += h.Won
+				dbHold.Lost += h.Lost
+				if err := srv.UpdateHold(htn, dbHold); err != nil {
+					fmt.Printf("failed to update hold: %s, tn: %s, err: %v\n", h.PositionHash, htn, err)
+					// todo: add retries
+					continue
+				}
+			}
+
+			// update sends
+			for _, s := range allS {
+				s.HoldsID = dbHold.ID
+				stn := tn + "_sends"
+				dbSend, err := srv.FindSend(stn, s.HoldsID, s.Sends)
+				if err != nil {
+					fmt.Printf("failed to find send: %s, tn: %s, err: %v\n", s.Sends, stn, err)
+					// todo: add retries
+					continue
+				}
+				if dbSend == nil {
+					_, err := srv.InsertSend(stn, s)
+					if err != nil {
+						fmt.Printf("failed to insert send: %s, tn: %s, err: %v\n", s.Sends, stn, err)
+						// todo: add retries
+						continue
+					}
+				} else {
+					dbSend.Held += s.Held
+					dbSend.Leaked += s.Leaked
+					dbSend.LeakedAmount += s.LeakedAmount
+					err := srv.UpdateSend(stn, dbSend)
+					if err != nil {
+						fmt.Printf("failed to update send: %s, tn: %s, err: %v\n", s.Sends, stn, err)
+						// todo: add retries
+						continue
+					}
+				}
+			}
+		}
 	}
 
 	return nil

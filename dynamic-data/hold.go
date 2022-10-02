@@ -5,16 +5,22 @@ import (
 	"fmt"
 )
 
-const getHoldsQuery = `SELECT id, position_hash, position, total_value, version_added FROM %s where position_hash = '%s'`
-const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, version_added FROM %s where id = '%v'`
-const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, version_added) VALUES(?,?,?,?)`
+const getHoldsQuery = `SELECT id, position_hash, position, total_value, won, lost, version_added FROM %s where position_hash = '%s'`
+const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, won, lost, version_added FROM %s where id = '%v'`
+const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, won, lost, version_added) VALUES(?,?,?,?,?,?)`
+const updateHoldQuery = `UPDATE %s SET won = ?, lost = ? where id = ?`
 
 type Hold struct {
 	ID           int
 	PositionHash string
 	Position     string
 	TotalValue   int
+	Won          int
+	Lost         int
 	VersionAdded string
+
+	// not saved
+	BiggestUnit string
 }
 
 func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
@@ -27,7 +33,7 @@ func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
 
 	var h Hold
 	for rows.Next() {
-		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.VersionAdded)
+		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.VersionAdded)
 		return &h, err
 	}
 
@@ -44,7 +50,7 @@ func FindHoldByID(db *sql.DB, tb string, id int) (*Hold, error) {
 
 	var h Hold
 	for rows.Next() {
-		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.VersionAdded)
+		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.VersionAdded)
 		return &h, err
 	}
 
@@ -65,7 +71,7 @@ func (h *Hold) SaveHold(db *sql.DB, tb string) (int, error) {
 	}
 	defer stmt.Close()
 
-	resp, err := stmt.Exec(h.PositionHash, h.Position, h.TotalValue, h.VersionAdded)
+	resp, err := stmt.Exec(h.PositionHash, h.Position, h.TotalValue, h.Won, h.Lost, h.VersionAdded)
 	if err != nil {
 		return 0, err
 	}
@@ -81,4 +87,31 @@ func (h *Hold) SaveHold(db *sql.DB, tb string) (int, error) {
 	}
 
 	return int(id), err
+}
+
+func (h *Hold) UpdateHold(db *sql.DB, tb string) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+
+	q := fmt.Sprintf(updateHoldQuery, tb)
+	defer tx.Rollback()
+	stmt, err := tx.Prepare(q)
+	if err != nil {
+		return err
+	}
+	defer stmt.Close()
+
+	_, err = stmt.Exec(h.Won, h.Lost, h.ID)
+	if err != nil {
+		return err
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	return err
 }
