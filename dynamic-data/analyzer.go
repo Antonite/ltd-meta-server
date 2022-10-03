@@ -123,7 +123,7 @@ func GetTopHolds(db *sql.DB, id string, wave int) ([]Stats, error) {
 		}
 
 		stats[i].Winrate = int(math.Floor(winrate * 100))
-		stats[i].Score = int(math.Ceil((1 + 0.5*(1-winrate)) * float64(stats[i].Score)))
+		stats[i].Score = int(math.Ceil((1 + 0.2*(1-winrate)) * float64(stats[i].Score)))
 		top200 = append(top200, stats[i])
 	}
 

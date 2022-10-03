@@ -343,11 +343,17 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 	}
 
 	holdsProcessed := 0
+	l := 0
+	for i := 0; i < waves; i++ {
+		l += len(holds[i])
+	}
+
 	for i := 0; i < waves; i++ {
 		for _, h := range holds[i] {
 			holdsProcessed++
 			if holdsProcessed%1000 == 0 {
-				fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v holds, rate: %v holds per second \n", holdsProcessed, math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100)/100)
+				rate := math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100) / 100
+				fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v holds, rate: %v holds per second, ETA: %v minutes \n", holdsProcessed, rate, math.Ceil(float64(l-holdsProcessed)/rate/60))
 				timeMarker = time.Now()
 			}
 
