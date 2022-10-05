@@ -20,15 +20,14 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const waves = 5
-const workers = 20
-const usable_value = 60
+const waves = 8
+const workers = 40
+const minElo = 2600
 
 type analysis struct {
 	biggestUnitID  string
 	biggestUnitPos string
 	TotalValue     int
-	adjustedValue  int
 	TotalMythium   int
 	sendHash       string
 	positionHash   string
@@ -68,7 +67,8 @@ func main() {
 	totalTime := time.Now().Sub(start)
 	hours := math.Floor(totalTime.Hours())
 	minutes := math.Floor(totalTime.Minutes()) - hours*60
-	fmt.Printf("total processing time: %vh %vm\n", hours, minutes)
+	seconds := math.Floor(totalTime.Seconds()) - hours*60*60 - minutes*60
+	fmt.Printf("total processing time: %.0fh %.0fm %.0fs\n", hours, minutes, seconds)
 }
 
 func generateTables(srv *server.Server) error {
@@ -155,7 +155,6 @@ func generateUnits(srv *server.Server) error {
 				if err != nil {
 					return errors.New(fmt.Sprintf("failed to convert unit total value: %s", u.UnitId))
 				}
-				usable := val >= usable_value
 				if u.UnitId == "hell_raiser_buffed_unit_id" {
 					u.Name = "Hell Raiser (Tantrum)"
 				}
@@ -164,7 +163,7 @@ func generateUnits(srv *server.Server) error {
 					Name:       u.Name,
 					IconPath:   u.IconPath,
 					TotalValue: val,
-					Usable:     usable,
+					Usable:     true,
 					Version:    u.Version,
 				}
 				if err := srv.SaveUnit(&newUnit); err != nil {
@@ -224,17 +223,11 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 
 	// temp maps
 	holds := make(map[int]map[string]*dynamicdata.Hold)
-	holds[0] = make(map[string]*dynamicdata.Hold)
-	holds[1] = make(map[string]*dynamicdata.Hold)
-	holds[2] = make(map[string]*dynamicdata.Hold)
-	holds[3] = make(map[string]*dynamicdata.Hold)
-	holds[4] = make(map[string]*dynamicdata.Hold)
 	sends := make(map[int]map[string]map[string]*dynamicdata.Send)
-	sends[0] = make(map[string]map[string]*dynamicdata.Send)
-	sends[1] = make(map[string]map[string]*dynamicdata.Send)
-	sends[2] = make(map[string]map[string]*dynamicdata.Send)
-	sends[3] = make(map[string]map[string]*dynamicdata.Send)
-	sends[4] = make(map[string]map[string]*dynamicdata.Send)
+	for i := 0; i < waves; i++ {
+		holds[i] = make(map[string]*dynamicdata.Hold)
+		sends[i] = make(map[string]map[string]*dynamicdata.Send)
+	}
 
 	// version regex
 	reg, err := regexp.Compile("v[0-9]+.[0-9]+.[0-9]")
@@ -257,80 +250,86 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 		for _, player := range g.PlayersData {
 			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
 				// something was sent and built
-				if len(player.MercenariesReceivedPerWave[i]) > 0 && len(player.BuildPerWave[i]) > 0 {
-					// find most expensive unit
-					anls, err := analyzeBoard(player, allUnits, allMercs, i)
-					if err != nil {
-						fmt.Printf("failed to analyze board: %v\n", err)
-						continue
-					}
+				// len(player.MercenariesReceivedPerWave[i]) == 0 ||
+				if len(player.BuildPerWave[i]) == 0 {
+					continue
+				}
 
-					leaked := len(player.LeaksPerWave[i]) > 0
-					if !leaked {
-						// check hydra case
-						if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
-							fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
-							// don't consider broken eggs as a hold
-							if !fullHydra {
-								leaked = true
-							}
+				// find most expensive unit
+				anls, err := analyzeBoard(player, allUnits, allMercs, i)
+				if err != nil {
+					fmt.Printf("failed to analyze board: %v\n", err)
+					continue
+				}
+
+				// check if we care about this unit
+				tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
+				htn := tn + "_holds"
+				if !srv.Tables[htn] {
+					continue
+				}
+
+				h, ok := holds[i][anls.positionHash]
+				// skip original low elo builds
+				if !ok && player.OverallElo < minElo {
+					continue
+				}
+				if !ok {
+					h = &dynamicdata.Hold{
+						PositionHash: anls.positionHash,
+						Position:     anls.position,
+						TotalValue:   anls.TotalValue,
+						VersionAdded: util.NormalizeVersion(g.Version),
+						BiggestUnit:  anls.biggestUnitID,
+					}
+					holds[i][anls.positionHash] = h
+				}
+				won := player.GameResult == "won"
+				if won {
+					h.Won++
+				} else {
+					h.Lost++
+				}
+
+				leaked := len(player.LeaksPerWave[i]) > 0
+				if !leaked {
+					// check hydra case
+					if anls.biggestUnitID == util.Eggsack && len(player.BuildPerWave) > i+1 {
+						fullHydra := util.IsFullHydra(player.BuildPerWave[i+1], anls.biggestUnitPos)
+						// don't consider broken eggs as a hold
+						if !fullHydra {
+							leaked = true
 						}
 					}
+				}
 
-					// check if we care about this unit
-					tn := util.GenerateUnitTableName(anls.biggestUnitID, i+1)
-					htn := tn + "_holds"
-					if !srv.Tables[htn] {
-						continue
+				sMap, ok := sends[i][anls.positionHash]
+				if !ok {
+					sMap = make(map[string]*dynamicdata.Send)
+					sends[i][anls.positionHash] = sMap
+				}
+				s, ok := sMap[anls.sendHash]
+				if !ok {
+					s = &dynamicdata.Send{
+						Sends:        anls.sendHash,
+						TotalMythium: anls.TotalMythium,
 					}
+					sMap[anls.sendHash] = s
+				}
+				if leaked {
+					s.Leaked++
+				} else {
+					s.Held++
+				}
 
-					h, ok := holds[i][anls.positionHash]
-					won := player.GameResult == "won"
-					if !ok {
-						h = &dynamicdata.Hold{
-							PositionHash: anls.positionHash,
-							Position:     anls.position,
-							TotalValue:   anls.TotalValue,
-							VersionAdded: g.Version,
-							BiggestUnit:  anls.biggestUnitID,
-						}
-						holds[i][anls.positionHash] = h
-					}
-					if won {
-						h.Won++
+				for _, leak := range player.LeaksPerWave[i] {
+					m, ok := allMercs[leak]
+					if ok {
+						s.LeakedAmount += m.IncomeBonus
 					} else {
-						h.Lost++
-					}
-
-					sMap, ok := sends[i][anls.positionHash]
-					if !ok {
-						sMap = make(map[string]*dynamicdata.Send)
-						sends[i][anls.positionHash] = sMap
-					}
-					s, ok := sMap[anls.sendHash]
-					if !ok {
-						s = &dynamicdata.Send{
-							Sends:         anls.sendHash,
-							TotalMythium:  anls.TotalMythium,
-							AdjustedValue: anls.adjustedValue,
-						}
-						sMap[anls.sendHash] = s
-					}
-					if leaked {
-						s.Leaked++
-					} else {
-						s.Held++
-					}
-
-					for _, leak := range player.LeaksPerWave[i] {
-						m, ok := allMercs[leak]
+						m, ok := bounties[leak]
 						if ok {
-							s.LeakedAmount += m.IncomeBonus
-						} else {
-							m, ok := bounties[leak]
-							if ok {
-								s.LeakedAmount += m
-							}
+							s.LeakedAmount += m
 						}
 					}
 				}
@@ -351,9 +350,9 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 	for i := 0; i < waves; i++ {
 		for _, h := range holds[i] {
 			holdsProcessed++
-			if holdsProcessed%1000 == 0 {
-				rate := math.Ceil(float64(1000)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100) / 100
-				fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v holds, rate: %v holds per second, ETA: %v minutes \n", holdsProcessed, rate, math.Ceil(float64(l-holdsProcessed)/rate/60))
+			if holdsProcessed%100 == 0 {
+				rate := math.Ceil(float64(100)/math.Abs(timeMarker.Sub(time.Now()).Seconds())*100) / 100
+				fmt.Printf(time.Now().Format("Mon Jan _2 15:04:05 2006")+" processed %v holds, rate: %v holds per second, ETA: %v seconds \n", holdsProcessed, rate, math.Ceil(float64(l-holdsProcessed)/rate))
 				timeMarker = time.Now()
 			}
 
@@ -461,22 +460,6 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		return anls, errors.New("failed to compute most expensive unit")
 	}
 
-	// analyse sends
-	ajMyth := 0.0
-	for _, m := range player.MercenariesReceivedPerWave[index] {
-		val, ok := allMercs[m]
-		if !ok {
-			return anls, errors.New(fmt.Sprintf("failed to find merc: %s", m))
-		}
-		anls.TotalMythium += val.MythiumCost
-		if val.IncomeBonus != 0 {
-			ajMyth += float64(val.MythiumCost) * (float64(val.MythiumCost) / float64(val.IncomeBonus) * float64(3) / float64(10))
-		} else {
-			ajMyth += float64(val.MythiumCost)
-		}
-
-	}
-	anls.adjustedValue = anls.TotalValue - int(math.Ceil(1.25*ajMyth))
 	sort.Strings(player.MercenariesReceivedPerWave[index])
 	anls.sendHash = strings.Join(player.MercenariesReceivedPerWave[index], ",")
 

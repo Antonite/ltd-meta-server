@@ -34,6 +34,7 @@ type PlayersData struct {
 	BuildPerWave               [][]string
 	ValuePerWave               []int
 	GameResult                 string
+	OverallElo                 int
 }
 
 type Unit struct {

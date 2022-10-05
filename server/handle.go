@@ -49,10 +49,10 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.Stats[wave]; !ok {
 		s.Stats[wave] = make(map[string]CachedStat)
 	}
-	var stats []dynamicdata.Stats
+	var stats []*dynamicdata.Stats
 	cachedStats, ok := s.Stats[wave][sr.Id]
 	if !ok || cachedStats.exp.Before(time.Now()) {
-		stats, err = dynamicdata.GetTopHolds(s.db, sr.Id, wave)
+		stats, err = dynamicdata.GetTopHolds(s.db, sr.Id, s.AllUnits.Mercs, wave)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

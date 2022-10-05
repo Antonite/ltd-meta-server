@@ -5,23 +5,22 @@ import (
 	"fmt"
 )
 
-const findSendQuery = `SELECT id, holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount FROM %s where holds_id = %v and sends = '%s'`
-const insertSendsQuery = `INSERT INTO %s(holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount) VALUES(?,?,?,?,?,?,?)`
+const findSendQuery = `SELECT id, holds_id, sends, held, leaked, leaked_amount FROM %s where holds_id = %v and sends = '%s'`
+const insertSendsQuery = `INSERT INTO %s(holds_id, sends, held, leaked, leaked_amount) VALUES(?,?,?,?,?)`
 const updateSendsQuery = `UPDATE %s SET held = ?, leaked = ?, leaked_amount = ? where id = ?`
-const getTopSendsQuery = `SELECT holds_id, sends, total_mythium, adjusted_value, held, leaked, leaked_amount FROM %s`
+const getTopSendsQuery = `SELECT holds_id, sends, held, leaked, leaked_amount FROM %s`
 
 type Send struct {
-	ID            int
-	HoldsID       int
-	Sends         string
-	TotalMythium  int
-	AdjustedValue int
-	Held          int
-	Leaked        int
-	LeakedAmount  int
+	ID           int
+	HoldsID      int
+	Sends        string
+	Held         int
+	Leaked       int
+	LeakedAmount int
 
 	// not saved
-	LeakedRatio int
+	TotalMythium int
+	LeakedRatio  int
 }
 
 func FindSend(db *sql.DB, tb string, id int, sends string) (*Send, error) {
@@ -34,7 +33,7 @@ func FindSend(db *sql.DB, tb string, id int, sends string) (*Send, error) {
 
 	var s Send
 	for rows.Next() {
-		err = rows.Scan(&s.ID, &s.HoldsID, &s.Sends, &s.TotalMythium, &s.AdjustedValue, &s.Held, &s.Leaked, &s.LeakedAmount)
+		err = rows.Scan(&s.ID, &s.HoldsID, &s.Sends, &s.Held, &s.Leaked, &s.LeakedAmount)
 		return &s, err
 	}
 
@@ -55,7 +54,7 @@ func (s *Send) InsertSend(db *sql.DB, tb string) (int, error) {
 	}
 	defer stmt.Close()
 
-	resp, err := stmt.Exec(s.HoldsID, s.Sends, s.TotalMythium, s.AdjustedValue, s.Held, s.Leaked, s.LeakedAmount)
+	resp, err := stmt.Exec(s.HoldsID, s.Sends, s.Held, s.Leaked, s.LeakedAmount)
 	if err != nil {
 		return 0, err
 	}
@@ -111,7 +110,7 @@ func getTopSends(db *sql.DB, tb string) ([]*Send, error) {
 	sends := []*Send{}
 	for rows.Next() {
 		var s Send
-		err = rows.Scan(&s.HoldsID, &s.Sends, &s.TotalMythium, &s.AdjustedValue, &s.Held, &s.Leaked, &s.LeakedAmount)
+		err = rows.Scan(&s.HoldsID, &s.Sends, &s.Held, &s.Leaked, &s.LeakedAmount)
 		if err != nil {
 			return nil, err
 		}

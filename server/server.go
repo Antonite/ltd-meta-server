@@ -26,7 +26,7 @@ type CachedUnits struct {
 }
 
 type CachedStat struct {
-	stats []dynamicdata.Stats
+	stats []*dynamicdata.Stats
 	exp   time.Time
 }
 
