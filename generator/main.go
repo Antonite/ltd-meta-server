@@ -201,6 +201,10 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 	bounties["Flying Chicken"] = 8
 	bounties["Scorpion"] = 9
 	bounties["Scorpion King"] = 36
+	bounties["Rocko"] = 19
+	bounties["Sludge"] = 10
+	bounties["Blob"] = 2
+	bounties["Kobra"] = 11
 
 	today := time.Now().UTC().Add(time.Hour * -24 * time.Duration(daysAgo-1))
 	yesterday := today.Add(time.Hour * -24)

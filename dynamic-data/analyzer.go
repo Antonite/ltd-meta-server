@@ -36,6 +36,9 @@ func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary
 	bounties[3] = 90
 	bounties[4] = 96
 	bounties[5] = 108
+	bounties[6] = 114
+	bounties[7] = 120
+	bounties[8] = 132
 
 	stats := []*Stats{}
 	tn := util.GenerateUnitTableName(id, wave)
@@ -90,9 +93,9 @@ func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary
 	}
 
 	for k, v := range analyses {
-		if v.bestScore == 0 {
-			continue
-		}
+		// if v.bestScore == 0 {
+		// 	continue
+		// }
 		sortedSends := v.sends
 		sort.Slice(sortedSends, func(i, j int) bool {
 			return sortedSends[i].TotalMythium < sortedSends[j].TotalMythium
