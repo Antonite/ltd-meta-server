@@ -16,7 +16,8 @@ type Server struct {
 	Api      *ltdapi.LtdApi
 	Version  string
 	AllUnits CachedUnits
-	Stats    map[int]map[string]CachedStat
+	UnitMap  map[string]*unit.Unit
+	Stats    map[int]map[string]map[string]CachedStat
 	Tables   map[string]bool
 	Versions []string
 }
@@ -49,7 +50,7 @@ func New() (*Server, error) {
 		return nil, err
 	}
 
-	stats := make(map[int]map[string]CachedStat)
+	stats := make(map[int]map[string]map[string]CachedStat)
 
 	s := &Server{db: database, Api: api, Version: v, Stats: stats, Tables: tables}
 
@@ -68,6 +69,7 @@ func New() (*Server, error) {
 	}
 
 	s.AllUnits = CachedUnits{Units: ulist, Mercs: mercs}
+	s.UnitMap = units
 
 	return s, nil
 }

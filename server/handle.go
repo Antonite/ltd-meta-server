@@ -22,8 +22,9 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type req struct {
-		Id   string
-		Wave string
+		Primary   string
+		Secondary string
+		Wave      string
 	}
 
 	var sr req
@@ -39,7 +40,18 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tn := util.GenerateUnitTableName(sr.Id, wave) + "_holds"
+	if sr.Secondary != "Any" {
+		tp := s.UnitMap[sr.Primary]
+		ts := s.UnitMap[sr.Secondary]
+		if tp.TotalValue > ts.TotalValue {
+			sr.Secondary = strconv.Itoa(ts.ID)
+		} else {
+			sr.Primary = ts.UnitID
+			sr.Secondary = strconv.Itoa(tp.ID)
+		}
+	}
+
+	tn := util.GenerateUnitTableName(sr.Primary, wave) + "_holds"
 	if _, ok := s.Tables[tn]; !ok {
 		http.Error(w, "not even possible", http.StatusNotFound)
 		return
@@ -47,12 +59,18 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 
 	// check cache
 	if _, ok := s.Stats[wave]; !ok {
-		s.Stats[wave] = make(map[string]CachedStat)
+		s.Stats[wave] = make(map[string]map[string]CachedStat)
+	}
+
+	primary, ok := s.Stats[wave][sr.Primary]
+	if !ok {
+		primary = make(map[string]CachedStat)
+		s.Stats[wave][sr.Primary] = primary
 	}
 	var stats []*dynamicdata.Stats
-	cachedStats, ok := s.Stats[wave][sr.Id]
+	cachedStats, ok := primary[sr.Secondary]
 	if !ok || cachedStats.exp.Before(time.Now()) {
-		stats, err = dynamicdata.GetTopHolds(s.db, sr.Id, s.AllUnits.Mercs, wave)
+		stats, err = dynamicdata.GetTopHolds(s.db, sr.Primary, sr.Secondary, s.AllUnits.Mercs, wave)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -61,7 +79,7 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 			stats: stats,
 			exp:   time.Now().Add(time.Hour * cacheTimeout),
 		}
-		s.Stats[wave][sr.Id] = cachedStats
+		primary[sr.Secondary] = cachedStats
 	} else {
 		stats = cachedStats.stats
 	}

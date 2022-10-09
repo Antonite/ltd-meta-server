@@ -29,7 +29,7 @@ type analysis struct {
 	hold       *Hold
 }
 
-func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary, wave int) ([]*Stats, error) {
+func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int) ([]*Stats, error) {
 	bounties := make(map[int]float64)
 	bounties[1] = 72
 	bounties[2] = 84
@@ -41,7 +41,7 @@ func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary
 	bounties[8] = 132
 
 	stats := []*Stats{}
-	tn := util.GenerateUnitTableName(id, wave)
+	tn := util.GenerateUnitTableName(primary, wave)
 	tns := tn + "_sends"
 	tnh := tn + "_holds"
 	sends, err := getTopSends(db, tns)
@@ -56,6 +56,10 @@ func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary
 			if h == nil || err != nil {
 				return nil, errors.Wrapf(err, "couldn't get hold id: %v", s.HoldsID)
 			}
+			if secondary != "Any" && !containsUnit(h.Position, secondary) {
+				continue
+			}
+
 			analyses[s.HoldsID] = &analysis{hold: h}
 		}
 
@@ -152,4 +156,16 @@ func collapseUnits(units string) string {
 	}
 	sort.Strings(used)
 	return strings.Join(used, ",")
+}
+
+func containsUnit(position string, unit string) bool {
+	l := strings.Split(position, ",")
+	for _, p := range l {
+		u := strings.Split(p, ":")[0]
+		if u == unit {
+			return true
+		}
+	}
+
+	return false
 }
