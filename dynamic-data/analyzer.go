@@ -101,6 +101,19 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 		sort.Slice(sortedSends, func(i, j int) bool {
 			return sortedSends[i].TotalMythium < sortedSends[j].TotalMythium
 		})
+		// egg case
+		if primary == "eggsack_unit_id" {
+			anyHeld := false
+			for _, ss := range sortedSends {
+				if ss.Held > 0 {
+					anyHeld = true
+					break
+				}
+			}
+			if !anyHeld {
+				continue
+			}
+		}
 		stat := Stats{
 			Score: v.hold.TotalValue - int(math.Floor(v.bestScore*1.25)),
 			Sends: sortedSends,
