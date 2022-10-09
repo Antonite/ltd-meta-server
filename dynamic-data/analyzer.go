@@ -29,7 +29,7 @@ type analysis struct {
 	hold       *Hold
 }
 
-func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int) ([]*Stats, error) {
+func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int, version string) ([]*Stats, error) {
 	bounties := make(map[int]float64)
 	bounties[1] = 72
 	bounties[2] = 84
@@ -56,7 +56,7 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			if h == nil || err != nil {
 				return nil, errors.Wrapf(err, "couldn't get hold id: %v", s.HoldsID)
 			}
-			if secondary != "Any" && !containsUnit(h.Position, secondary) {
+			if h.VersionAdded != version || (secondary != "Any" && !containsUnit(h.Position, secondary)) {
 				continue
 			}
 
