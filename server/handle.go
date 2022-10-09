@@ -41,8 +41,16 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sr.Secondary != "Any" {
-		tp := s.UnitMap[sr.Primary]
-		ts := s.UnitMap[sr.Secondary]
+		tp, ok := s.UnitMap[sr.Primary]
+		if !ok {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		ts, ok := s.UnitMap[sr.Secondary]
+		if !ok {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if tp.TotalValue > ts.TotalValue {
 			sr.Secondary = strconv.Itoa(ts.ID)
 		} else {
