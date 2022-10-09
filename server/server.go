@@ -18,6 +18,7 @@ type Server struct {
 	AllUnits CachedUnits
 	Stats    map[int]map[string]CachedStat
 	Tables   map[string]bool
+	Versions []string
 }
 
 type CachedUnits struct {
@@ -101,8 +102,8 @@ func (s *Server) CreateTable(name string) error {
 	return db.CreateTable(s.db, name)
 }
 
-func (s *Server) FindHold(tb, hash string) (*dynamicdata.Hold, error) {
-	return dynamicdata.FindHold(s.db, tb, hash)
+func (s *Server) FindHold(tb, hash string, version string) (*dynamicdata.Hold, error) {
+	return dynamicdata.FindHold(s.db, tb, hash, version)
 }
 
 func (s *Server) SaveHold(tb string, h *dynamicdata.Hold) (int, error) {
@@ -123,4 +124,8 @@ func (s *Server) InsertSend(tb string, send *dynamicdata.Send) (int, error) {
 
 func (s *Server) UpdateSend(tb string, send *dynamicdata.Send) error {
 	return send.UpdateSend(s.db, tb)
+}
+
+func (s *Server) GetVersions() ([]string, error) {
+	return dynamicdata.GetVersions(s.db)
 }

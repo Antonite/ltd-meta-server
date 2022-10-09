@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-const getHoldsQuery = `SELECT id, position_hash, position, total_value, won, lost, version_added FROM %s where position_hash = '%s'`
+const getHoldsQuery = `SELECT id, position_hash, position, total_value, won, lost, version_added FROM %s where position_hash = '%s' and version_added = '%s'`
 const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, won, lost, version_added FROM %s where id = '%v'`
 const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, won, lost, version_added) VALUES(?,?,?,?,?,?)`
 const updateHoldQuery = `UPDATE %s SET won = ?, lost = ? where id = ?`
@@ -23,8 +23,8 @@ type Hold struct {
 	BiggestUnit string
 }
 
-func FindHold(db *sql.DB, tb string, hash string) (*Hold, error) {
-	q := fmt.Sprintf(getHoldsQuery, tb, hash)
+func FindHold(db *sql.DB, tb string, hash string, version string) (*Hold, error) {
+	q := fmt.Sprintf(getHoldsQuery, tb, hash, version)
 	rows, err := db.Query(q)
 	if err != nil {
 		return nil, err

@@ -27,6 +27,10 @@ func main() {
 		srv.HandleGetTopHolds(w, r)
 	})
 
+	http.HandleFunc("/versions", func(w http.ResponseWriter, r *http.Request) {
+		srv.HandleGetVersions(w, r)
+	})
+
 	fmt.Println("Server started   " + time.Now().Format("Mon Jan _2 15:04:05 2006"))
 
 	log.Fatal(http.ListenAndServeTLS(":8081", cert, key, nil))

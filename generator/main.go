@@ -368,7 +368,7 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 			// update hold
 			tn := util.GenerateUnitTableName(h.BiggestUnit, i+1)
 			htn := tn + "_holds"
-			dbHold, err := srv.FindHold(htn, h.PositionHash)
+			dbHold, err := srv.FindHold(htn, h.PositionHash, h.VersionAdded)
 			if err != nil {
 				fmt.Printf("failed to find hold: %s, tn: %s, err: %v\n", h.PositionHash, htn, err)
 				// todo: add retries

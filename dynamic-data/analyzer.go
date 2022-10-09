@@ -93,9 +93,6 @@ func GetTopHolds(db *sql.DB, id string, allMercs map[string]*mercenary.Mercenary
 	}
 
 	for k, v := range analyses {
-		// if v.bestScore == 0 {
-		// 	continue
-		// }
 		sortedSends := v.sends
 		sort.Slice(sortedSends, func(i, j int) bool {
 			return sortedSends[i].TotalMythium < sortedSends[j].TotalMythium
