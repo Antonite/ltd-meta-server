@@ -67,14 +67,30 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// check cache
-	if _, ok := s.Stats[wave]; !ok {
-		s.Stats[wave] = make(map[string]map[string]CachedStat)
+	validVersion := false
+	for _, v := range s.Versions {
+		if v == sr.Version {
+			validVersion = true
+			break
+		}
+	}
+	if !validVersion {
+		http.Error(w, "invalid version", http.StatusBadRequest)
+		return
 	}
 
-	primary, ok := s.Stats[wave][sr.Primary]
+	if _, ok := s.Stats[sr.Version]; !ok {
+		s.Stats[sr.Version] = make(map[int]map[string]map[string]CachedStat)
+	}
+
+	if _, ok := s.Stats[sr.Version][wave]; !ok {
+		s.Stats[sr.Version][wave] = make(map[string]map[string]CachedStat)
+	}
+
+	primary, ok := s.Stats[sr.Version][wave][sr.Primary]
 	if !ok {
 		primary = make(map[string]CachedStat)
-		s.Stats[wave][sr.Primary] = primary
+		s.Stats[sr.Version][wave][sr.Primary] = primary
 	}
 	var stats []*dynamicdata.Stats
 	cachedStats, ok := primary[sr.Secondary]

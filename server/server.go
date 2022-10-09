@@ -17,7 +17,7 @@ type Server struct {
 	Version  string
 	AllUnits CachedUnits
 	UnitMap  map[string]*unit.Unit
-	Stats    map[int]map[string]map[string]CachedStat
+	Stats    map[string]map[int]map[string]map[string]CachedStat
 	Tables   map[string]bool
 	Versions []string
 }
@@ -50,7 +50,7 @@ func New() (*Server, error) {
 		return nil, err
 	}
 
-	stats := make(map[int]map[string]map[string]CachedStat)
+	stats := make(map[string]map[int]map[string]map[string]CachedStat)
 
 	s := &Server{db: database, Api: api, Version: v, Stats: stats, Tables: tables}
 
