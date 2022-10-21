@@ -185,27 +185,27 @@ func generateUnits(srv *server.Server) error {
 		return err
 	}
 
-	// update upgrades
-	allUnits, err := srv.GetUnits()
-	if err != nil {
-		return err
-	}
-	// custom upgrades
-	upgrades["eggsack_unit_id"] = append(upgrades["eggsack_unit_id"], "hydra_unit_id")
-	upgrades["hell_raiser_unit_id"] = append(upgrades["hell_raiser_unit_id"], "hell_raiser_buffed_unit_id")
-	upgrades["pack_rat_unit_id"] = append(upgrades["pack_rat_unit_id"], "pack_rat_nest_unit_id")
+	// // update upgrades
+	// allUnits, err := srv.GetUnits()
+	// if err != nil {
+	// 	return err
+	// }
+	// // custom upgrades
+	// upgrades["eggsack_unit_id"] = append(upgrades["eggsack_unit_id"], "hydra_unit_id")
+	// upgrades["hell_raiser_unit_id"] = append(upgrades["hell_raiser_unit_id"], "hell_raiser_buffed_unit_id")
+	// upgrades["pack_rat_unit_id"] = append(upgrades["pack_rat_unit_id"], "pack_rat_nest_unit_id")
 
-	for k, v := range upgrades {
-		for _, upg := range v {
-			up := unit.UnitUpgrade{
-				UnitID:    allUnits[k].ID,
-				UpgradeID: allUnits[upg].ID,
-			}
-			if err = srv.SaveUpgrade(&up); err != nil {
-				return err
-			}
-		}
-	}
+	// for k, v := range upgrades {
+	// 	for _, upg := range v {
+	// 		up := unit.UnitUpgrade{
+	// 			UnitID:    allUnits[k].ID,
+	// 			UpgradeID: allUnits[upg].ID,
+	// 		}
+	// 		if err = srv.SaveUpgrade(&up); err != nil {
+	// 			return err
+	// 		}
+	// 	}
+	// }
 
 	return nil
 }

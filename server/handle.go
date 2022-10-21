@@ -66,6 +66,14 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if len(s.Versions) == 0 {
+		versions, err := s.GetVersions()
+		if err != nil {
+			http.Error(w, "failed to load versions", http.StatusInternalServerError)
+		}
+		s.Versions = versions
+	}
+
 	// check cache
 	validVersion := false
 	for _, v := range s.Versions {

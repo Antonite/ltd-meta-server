@@ -184,7 +184,6 @@ func (api *LtdApi) getGames(offset int, startDate string, endDate string, w int)
 			continue
 		}
 
-		fmt.Printf("worker %d completed request on try #%d, %d\n", w, i, offset)
 		return games, nil
 	}
 

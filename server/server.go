@@ -93,15 +93,16 @@ func (s *Server) GenerateGuides() {
 	s.Versions = versions
 
 	guides := []guide.Guide{}
+	statMap := make(map[int]map[int][]*dynamicdata.Stats)
+	upgrades, err := s.GetUpgrades()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
 	for _, u := range s.AllUnits.Units {
 		viable := true
 		htnms := []string{}
 		stnms := []string{}
-		upgrades, err := s.GetUpgrades()
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
 		// make sure we have the data
 		for i := 1; i <= guide.Waves; i++ {
 			tn := util.GenerateUnitTableName(u.UnitID, i)
@@ -130,7 +131,11 @@ func (s *Server) GenerateGuides() {
 		if err != nil {
 			continue
 		}
-		guides = append(guides, guide.GenerateGuides(sMap, upgrades)...)
+		statMap[u.ID] = sMap
+	}
+
+	for uid := range statMap {
+		guides = append(guides, guide.GenerateGuides(uid, statMap, upgrades)...)
 	}
 
 	sort.Slice(guides, func(i, j int) bool {
@@ -151,9 +156,19 @@ func (s *Server) GenerateGuides() {
 		primary, secondary := s.getExpensiveUnits(g.Waves[2].PositionHash, idMap)
 		g.MainUnitID = primary
 		g.SecondaryUnitID = secondary
+		if secondary == 0 {
+			p, s := s.getExpensiveUnits(g.Waves[4].PositionHash, idMap)
+			if p != primary {
+				g.SecondaryUnitID = p
+			} else {
+				g.SecondaryUnitID = s
+			}
+		}
 		g.Mastermind = "Greed"
-		if g.Waves[2].Value >= 285 {
-			g.Mastermind = "Cashout/Yolo/Cartel"
+		if g.Waves[0].Value > 250 {
+			g.Mastermind = "Cashout"
+		} else if g.Waves[2].Value >= 285 {
+			g.Mastermind = "Cashout/Yolo/Cartel/Overbuild"
 		}
 		s.Guides = append(s.Guides, g)
 	}

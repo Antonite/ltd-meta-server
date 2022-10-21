@@ -88,7 +88,10 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			}
 		}
 
-		holdScore := ajMyth * ((float64(s.Held) + float64(s.Leaked)*(1-1.3*leakRate)) / float64(s.Held+s.Leaked))
+		holdScore := ajMyth * ((float64(s.Held) + float64(s.Leaked)*(1-1.5*leakRate)) / float64(s.Held+s.Leaked))
+		if leakRate > 0.5 {
+			holdScore = 0
+		}
 		if holdScore > analyses[s.HoldsID].bestScore {
 			analyses[s.HoldsID].bestScore = holdScore
 		}
@@ -138,8 +141,8 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 				if v.Winrate > s.Winrate || v.Score < s.Score {
 					continue
 				}
-				dupes[key] = s
 			}
+			dupes[key] = s
 		} else {
 			dupes[h.PositionHash] = s
 		}
