@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 )
 
 const url = "https://apiv2.legiontd2.com/games?limit=50&sortBy=date&sortDirection=1&includeDetails=true&dateAfter=%v&dateBefore=%v&offset=%v"
@@ -47,6 +48,7 @@ type Unit struct {
 	IncomeBonus   string
 	UnitClass     string
 	CategoryClass string
+	UpgradesFrom  []string
 }
 
 func New() *LtdApi {
@@ -116,23 +118,16 @@ func (api *LtdApi) RequestGames(startDate string, endDate string, output chan<- 
 	offset := worker * 50
 	for {
 		// get units from api
-		resp, err := api.getGames(offset, startDate, endDate)
-		if err != nil || (resp.StatusCode != 200 && resp.StatusCode != 404) {
-			fmt.Println(resp)
+		games, err := api.getGames(offset, startDate, endDate, worker)
+		if err != nil {
 			errChan <- errors.New("failed to retrieve games")
-			return
-		} else if resp.StatusCode == 404 {
 			return
 		}
 
-		// append to return channel
-		games := []Game{}
-		defer resp.Body.Close()
-		decoder := json.NewDecoder(resp.Body)
-		if err = decoder.Decode(&games); err != nil {
-			errChan <- err
+		if len(games) == 0 {
 			return
 		}
+
 		for _, g := range games {
 			output <- g
 		}
@@ -155,16 +150,44 @@ func (api *LtdApi) getUnits(version string) (*http.Response, error) {
 	return resp, err
 }
 
-func (api *LtdApi) getGames(offset int, startDate string, endDate string) (*http.Response, error) {
+func (api *LtdApi) getGames(offset int, startDate string, endDate string, w int) ([]Game, error) {
 	pUrl := fmt.Sprintf(url, startDate, endDate, offset)
-	req, err := http.NewRequest("GET", pUrl, nil)
-	if err != nil {
-		return nil, err
+	var resp *http.Response
+	var req *http.Request
+	var err error
+	for i := 0; i < 50; i++ {
+		time.Sleep(time.Second * 5)
+		req, err = http.NewRequest("GET", pUrl, nil)
+		if err != nil {
+			return nil, err
+		}
+		req.Header.Set("x-api-key", api.Key)
+		req.Header.Set("Connection", "keep-alive")
+		req.Header.Set("Accept-Encoding", "gzip, deflate, br")
+		client := &http.Client{Timeout: time.Second * 25}
+
+		if i > 0 {
+			fmt.Printf("worker %d retrying request #%d, %d\n", w, i, offset)
+		}
+
+		resp, err = client.Do(req)
+		if err != nil || (resp.StatusCode != 200 && resp.StatusCode != 404) {
+			continue
+		} else if resp.StatusCode == 404 {
+			return []Game{}, nil
+		}
+
+		games := []Game{}
+		defer resp.Body.Close()
+		decoder := json.NewDecoder(resp.Body)
+		if err = decoder.Decode(&games); err != nil {
+			continue
+		}
+
+		fmt.Printf("worker %d completed request on try #%d, %d\n", w, i, offset)
+		return games, nil
 	}
 
-	req.Header.Set("x-api-key", api.Key)
-
-	client := &http.Client{}
-	resp, err := client.Do(req)
-	return resp, err
+	fmt.Printf("worker %d failed all tries %d\n", w, offset)
+	return nil, err
 }

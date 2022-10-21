@@ -2,14 +2,22 @@ package server
 
 import (
 	"database/sql"
+	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/antonite/ltd-meta-server/db"
 	dynamicdata "github.com/antonite/ltd-meta-server/dynamic-data"
+	"github.com/antonite/ltd-meta-server/guide"
 	"github.com/antonite/ltd-meta-server/ltdapi"
 	"github.com/antonite/ltd-meta-server/mercenary"
 	"github.com/antonite/ltd-meta-server/unit"
+	"github.com/antonite/ltd-meta-server/util"
 )
+
+const maxGuides = 100
 
 type Server struct {
 	db       *sql.DB
@@ -20,6 +28,7 @@ type Server struct {
 	Stats    map[string]map[int]map[string]map[string]CachedStat
 	Tables   map[string]bool
 	Versions []string
+	Guides   []guide.Guide
 }
 
 type CachedUnits struct {
@@ -74,6 +83,85 @@ func New() (*Server, error) {
 	return s, nil
 }
 
+func (s *Server) GenerateGuides() {
+	fmt.Println("starting guide generation")
+	versions, err := s.GetVersions()
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	s.Versions = versions
+
+	guides := []guide.Guide{}
+	for _, u := range s.AllUnits.Units {
+		viable := true
+		htnms := []string{}
+		stnms := []string{}
+		upgrades, err := s.GetUpgrades()
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		// make sure we have the data
+		for i := 1; i <= guide.Waves; i++ {
+			tn := util.GenerateUnitTableName(u.UnitID, i)
+			htn := tn + "_holds"
+			if _, ok := s.Tables[htn]; !ok {
+				viable = false
+				break
+			}
+			htnms = append(htnms, htn)
+			stnms = append(stnms, tn+"_sends")
+		}
+		if !viable {
+			continue
+		}
+
+		// find the stats for each wave
+		sMap := make(map[int][]*dynamicdata.Stats)
+		for i := 1; i <= guide.Waves; i++ {
+			stats, err := dynamicdata.GetTopHolds(s.db, u.UnitID, "Any", s.AllUnits.Mercs, i, s.Versions[0], 500, false)
+			if err != nil {
+				fmt.Printf("failed to generate stats for wave %d unit %s: %v\n", i, u.UnitID, err)
+				break
+			}
+			sMap[i] = stats
+		}
+		if err != nil {
+			continue
+		}
+		guides = append(guides, guide.GenerateGuides(sMap, upgrades)...)
+	}
+
+	sort.Slice(guides, func(i, j int) bool {
+		return guides[i].Score < guides[j].Score
+	})
+	max := maxGuides
+	if len(guides) < max {
+		max = len(guides)
+	}
+	topGuides := guides[:max]
+
+	idMap := make(map[string]*unit.Unit)
+	for _, u := range s.AllUnits.Units {
+		idMap[strconv.Itoa(u.ID)] = u
+	}
+
+	for _, g := range topGuides {
+		primary, secondary := s.getExpensiveUnits(g.Waves[2].PositionHash, idMap)
+		g.MainUnitID = primary
+		g.SecondaryUnitID = secondary
+		g.Mastermind = "Greed"
+		if g.Waves[2].Value >= 285 {
+			g.Mastermind = "Cashout/Yolo/Cartel"
+		}
+		s.Guides = append(s.Guides, g)
+	}
+
+	fmt.Println("finished guide generation")
+	return
+}
+
 func (s *Server) RefreshTables() error {
 	tables, err := db.GetTables(s.db)
 	if err != nil {
@@ -90,6 +178,14 @@ func (s *Server) GetUnits() (map[string]*unit.Unit, error) {
 
 func (s *Server) SaveUnit(u *unit.Unit) error {
 	return u.Save(s.db)
+}
+
+func (s *Server) GetUpgrades() (map[string][]string, error) {
+	return unit.GetUpgrades(s.db)
+}
+
+func (s *Server) SaveUpgrade(up *unit.UnitUpgrade) error {
+	return up.Save(s.db)
 }
 
 func (s *Server) GetMercs() (map[string]*mercenary.Mercenary, error) {
@@ -130,4 +226,19 @@ func (s *Server) UpdateSend(tb string, send *dynamicdata.Send) error {
 
 func (s *Server) GetVersions() ([]string, error) {
 	return dynamicdata.GetVersions(s.db)
+}
+
+func (s *Server) getExpensiveUnits(hash string, uMap map[string]*unit.Unit) (int, int) {
+	units := []*unit.Unit{}
+	for _, pos := range strings.Split(hash, ",") {
+		u := strings.Split(pos, ":")[0]
+		units = append(units, uMap[u])
+	}
+	sort.Slice(units, func(i, j int) bool {
+		return units[i].TotalValue > units[j].TotalValue
+	})
+	if len(units) < 2 {
+		return units[0].ID, 0
+	}
+	return units[0].ID, units[1].ID
 }

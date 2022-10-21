@@ -31,7 +31,12 @@ func main() {
 		srv.HandleGetVersions(w, r)
 	})
 
-	fmt.Println("Server started   " + time.Now().Format("Mon Jan _2 15:04:05 2006"))
+	http.HandleFunc("/guides", func(w http.ResponseWriter, r *http.Request) {
+		srv.HandleGetGuides(w, r)
+	})
 
+	fmt.Println("Server started   " + time.Now().Format("Mon Jan _2 15:04:05 2006"))
+	go srv.GenerateGuides()
 	log.Fatal(http.ListenAndServeTLS(":8081", cert, key, nil))
+	// log.Fatal(http.ListenAndServe(":8081", nil))
 }

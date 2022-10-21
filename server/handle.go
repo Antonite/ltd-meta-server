@@ -95,7 +95,7 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	var stats []*dynamicdata.Stats
 	cachedStats, ok := primary[sr.Secondary]
 	if !ok || cachedStats.exp.Before(time.Now()) {
-		stats, err = dynamicdata.GetTopHolds(s.db, sr.Primary, sr.Secondary, s.AllUnits.Mercs, wave, sr.Version)
+		stats, err = dynamicdata.GetTopHolds(s.db, sr.Primary, sr.Secondary, s.AllUnits.Mercs, wave, sr.Version, 20, true)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -164,6 +164,26 @@ func (s *Server) HandleGetVersions(w http.ResponseWriter, r *http.Request) {
 	}
 
 	js, err := json.Marshal(s.Versions)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+
+	w.Write(js)
+}
+
+func (s *Server) HandleGetGuides(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET,HEAD,OPTIONS,POST,PUT")
+	w.Header().Set("Access-Control-Allow-Headers", "Access-Control-Allow-Headers, Origin,Accept, X-Requested-With, Content-Type, Access-Control-Request-Method, Access-Control-Request-Headers")
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	js, err := json.Marshal(s.Guides)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

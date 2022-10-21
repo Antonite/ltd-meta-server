@@ -5,6 +5,7 @@ import (
 )
 
 const CashoutGold = 273
+const Waves = 8
 
 var (
 	specialUnits []string = []string{"hell_raiser_buffed_unit_id", "pack_rat_nest_unit_id"}

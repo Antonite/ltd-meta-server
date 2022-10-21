@@ -17,6 +17,7 @@ type Stats struct {
 	Score        int
 	Sends        []*Send
 	Position     string
+	Hash         string
 	TotalValue   int
 	Winrate      int
 	VersionAdded string
@@ -29,7 +30,7 @@ type analysis struct {
 	hold       *Hold
 }
 
-func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int, version string) ([]*Stats, error) {
+func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int, version string, max int, dedupe bool) ([]*Stats, error) {
 	bounties := make(map[int]float64)
 	bounties[1] = 72
 	bounties[2] = 84
@@ -87,7 +88,7 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			}
 		}
 
-		holdScore := ajMyth * ((float64(s.Held) + float64(s.Leaked)*(1-leakRate)) / float64(s.Held+s.Leaked))
+		holdScore := ajMyth * ((float64(s.Held) + float64(s.Leaked)*(1-1.3*leakRate)) / float64(s.Held+s.Leaked))
 		if holdScore > analyses[s.HoldsID].bestScore {
 			analyses[s.HoldsID].bestScore = holdScore
 		}
@@ -115,9 +116,10 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			}
 		}
 		stat := Stats{
-			Score: v.hold.TotalValue - int(math.Floor(v.bestScore*1.25)),
-			Sends: sortedSends,
-			ID:    k,
+			Score:   v.hold.TotalValue - int(math.Floor(v.bestScore*1.25)),
+			Sends:   sortedSends,
+			ID:      k,
+			Winrate: int(math.Floor((float64(v.hold.Won) / (float64(v.hold.Won) + float64(v.hold.Lost))) * 100)),
 		}
 		stats = append(stats, &stat)
 	}
@@ -129,31 +131,35 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 	dupes := make(map[string]*Stats)
 	count := 0
 	for _, s := range stats {
-		h, err := FindHoldByID(db, tnh, s.ID)
-		if h == nil || err != nil {
-			return nil, errors.Wrapf(err, "couldn't get hold id: %v", s.ID)
-		}
+		h := analyses[s.ID].hold
 		key := collapseUnits(h.Position)
-		if v, ok := dupes[key]; ok {
-			if v.Winrate > s.Winrate || v.Score < s.Score {
-				continue
+		if dedupe {
+			if v, ok := dupes[key]; ok {
+				if v.Winrate > s.Winrate || v.Score < s.Score {
+					continue
+				}
+				dupes[key] = s
 			}
 		} else {
-			count++
+			dupes[h.PositionHash] = s
 		}
-		dupes[key] = s
+		count++
+
 		s.Position = h.Position
 		s.TotalValue = h.TotalValue
 		s.VersionAdded = h.VersionAdded
-		if count >= 20 {
+		s.Hash = h.PositionHash
+		if count >= max {
 			break
 		}
 	}
 
 	output := []*Stats{}
+
 	for _, v := range dupes {
 		output = append(output, v)
 	}
+
 	sort.Slice(output, func(i, j int) bool {
 		return output[i].Score < output[j].Score
 	})

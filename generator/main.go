@@ -20,8 +20,7 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const waves = 8
-const workers = 40
+const workers = 20
 const minElo = 2600
 
 type analysis struct {
@@ -82,7 +81,7 @@ func generateTables(srv *server.Server) error {
 			continue
 		}
 		n := strings.TrimSuffix(k, "unit_id")
-		for i := 1; i <= waves; i++ {
+		for i := 1; i <= util.Waves; i++ {
 			if i == 1 && v.TotalValue >= util.CashoutGold {
 				continue
 			}
@@ -109,6 +108,7 @@ func generateUnits(srv *server.Server) error {
 	units := make(chan ltdapi.Unit)
 	errChan := make(chan error, 1)
 	go srv.Api.RequestUnits(srv.Version, units, errChan)
+	upgrades := make(map[string][]string)
 	for u := range units {
 		if u.CategoryClass != "Standard" && !util.IsSpecialUnit(u.UnitId) {
 			continue
@@ -147,6 +147,15 @@ func generateUnits(srv *server.Server) error {
 				}
 			}
 		case "Fighter":
+			for _, upgu := range u.UpgradesFrom {
+				for _, upg := range strings.Split(upgu, " ") {
+					if upg == "units" || upg == "" || upg == " " {
+						continue
+					}
+					upgrades[upg] = append(upgrades[upg], u.UnitId)
+				}
+			}
+
 			if _, ok := savedUnits[u.UnitId]; !ok {
 				if u.TotalValue == "" {
 					return errors.New(fmt.Sprintf("got a unit with empty total value: %s", u.UnitId))
@@ -174,6 +183,28 @@ func generateUnits(srv *server.Server) error {
 	}
 	for err := range errChan {
 		return err
+	}
+
+	// update upgrades
+	allUnits, err := srv.GetUnits()
+	if err != nil {
+		return err
+	}
+	// custom upgrades
+	upgrades["eggsack_unit_id"] = append(upgrades["eggsack_unit_id"], "hydra_unit_id")
+	upgrades["hell_raiser_unit_id"] = append(upgrades["hell_raiser_unit_id"], "hell_raiser_buffed_unit_id")
+	upgrades["pack_rat_unit_id"] = append(upgrades["pack_rat_unit_id"], "pack_rat_nest_unit_id")
+
+	for k, v := range upgrades {
+		for _, upg := range v {
+			up := unit.UnitUpgrade{
+				UnitID:    allUnits[k].ID,
+				UpgradeID: allUnits[upg].ID,
+			}
+			if err = srv.SaveUpgrade(&up); err != nil {
+				return err
+			}
+		}
 	}
 
 	return nil
@@ -228,13 +259,13 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 	// temp maps
 	holds := make(map[int]map[string]*dynamicdata.Hold)
 	sends := make(map[int]map[string]map[string]*dynamicdata.Send)
-	for i := 0; i < waves; i++ {
+	for i := 0; i < util.Waves; i++ {
 		holds[i] = make(map[string]*dynamicdata.Hold)
 		sends[i] = make(map[string]map[string]*dynamicdata.Send)
 	}
 
 	// version regex
-	reg, err := regexp.Compile("v[0-9]+.[0-9]+.[0-9]")
+	reg, err := regexp.Compile("v[0-9]+.[0-9]+(.[0-9])*")
 	if err != nil {
 		return err
 	}
@@ -252,9 +283,7 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 			continue
 		}
 		for _, player := range g.PlayersData {
-			for i := 0; i < util.Min(g.EndingWave-2, waves); i++ {
-				// something was sent and built
-				// len(player.MercenariesReceivedPerWave[i]) == 0 ||
+			for i := 0; i < util.Min(g.EndingWave-2, util.Waves); i++ {
 				if len(player.BuildPerWave[i]) == 0 {
 					continue
 				}
@@ -347,11 +376,11 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 
 	holdsProcessed := 0
 	l := 0
-	for i := 0; i < waves; i++ {
+	for i := 0; i < util.Waves; i++ {
 		l += len(holds[i])
 	}
 
-	for i := 0; i < waves; i++ {
+	for i := 0; i < util.Waves; i++ {
 		for _, h := range holds[i] {
 			holdsProcessed++
 			if holdsProcessed%100 == 0 {
@@ -434,10 +463,7 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 	expCost := 0
 	// rehash board
 	sort.Strings(player.BuildPerWave[index])
-	diff, err := strconv.ParseFloat(strings.Split(strings.Split(player.BuildPerWave[index][0], ":")[1], "|")[1], 64)
-	if err != nil {
-		return anls, err
-	}
+	// find the biggest unit
 	for _, u := range player.BuildPerWave[index] {
 		id := strings.Split(u, ":")[0]
 		existing, ok := allUnits[id]
@@ -449,7 +475,13 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 			anls.biggestUnitID = existing.UnitID
 			anls.biggestUnitPos = u
 		}
-
+	}
+	// hash based on the biggest unit
+	diff, err := strconv.ParseFloat(strings.Split(strings.Split(anls.biggestUnitPos, ":")[1], "|")[1], 64)
+	if err != nil {
+		return anls, err
+	}
+	for _, u := range player.BuildPerWave[index] {
 		hash, org, err := adjustUnit(u, diff, allUnits)
 		if err != nil {
 			return anls, err
@@ -457,6 +489,7 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		anls.positionHash += hash + ","
 		anls.position += org + ","
 	}
+
 	anls.TotalValue += player.ValuePerWave[index]
 	anls.positionHash = strings.TrimSuffix(anls.positionHash, ",")
 	anls.position = strings.TrimSuffix(anls.position, ",")

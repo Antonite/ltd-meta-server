@@ -1,6 +1,9 @@
 package dynamicdata
 
-import "database/sql"
+import (
+	"database/sql"
+	"sort"
+)
 
 const selectVersions = "select distinct version_added from nightmare_wave_1_holds"
 
@@ -17,6 +20,8 @@ func GetVersions(db *sql.DB) ([]string, error) {
 		err = rows.Scan(&v)
 		versions = append(versions, v)
 	}
+
+	sort.Strings(versions)
 
 	return versions, nil
 }
