@@ -30,7 +30,7 @@ type analysis struct {
 	hold       *Hold
 }
 
-func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int, version string, max int, dedupe bool) ([]*Stats, error) {
+func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[string]*mercenary.Mercenary, wave int, version string, max int, dedupe bool, leakScaler float64) ([]*Stats, error) {
 	bounties := make(map[int]float64)
 	bounties[1] = 72
 	bounties[2] = 84
@@ -61,7 +61,7 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 				continue
 			}
 
-			analyses[s.HoldsID] = &analysis{hold: h}
+			analyses[s.HoldsID] = &analysis{hold: h, bestScore: -300}
 		}
 
 		analyses[s.HoldsID].sends = append(analyses[s.HoldsID].sends, s)
@@ -88,10 +88,8 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			}
 		}
 
-		holdScore := ajMyth * ((float64(s.Held) + float64(s.Leaked)*(1-1.5*leakRate)) / float64(s.Held+s.Leaked))
-		if leakRate > 0.5 {
-			holdScore = 0
-		}
+		goldLost := (1.0 - ((float64(s.Held) + float64(s.Leaked)*(1-leakRate)) / float64(s.Held+s.Leaked))) * bounties[wave] * leakScaler
+		holdScore := (ajMyth * 1.25) - goldLost
 		if holdScore > analyses[s.HoldsID].bestScore {
 			analyses[s.HoldsID].bestScore = holdScore
 		}
@@ -119,7 +117,7 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			}
 		}
 		stat := Stats{
-			Score:   v.hold.TotalValue - int(math.Floor(v.bestScore*1.25)),
+			Score:   v.hold.TotalValue - int(math.Floor(v.bestScore)),
 			Sends:   sortedSends,
 			ID:      k,
 			Winrate: int(math.Floor((float64(v.hold.Won) / (float64(v.hold.Won) + float64(v.hold.Lost))) * 100)),

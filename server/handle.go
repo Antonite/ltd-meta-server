@@ -103,7 +103,7 @@ func (s *Server) HandleGetTopHolds(w http.ResponseWriter, r *http.Request) {
 	var stats []*dynamicdata.Stats
 	cachedStats, ok := primary[sr.Secondary]
 	if !ok || cachedStats.exp.Before(time.Now()) {
-		stats, err = dynamicdata.GetTopHolds(s.db, sr.Primary, sr.Secondary, s.AllUnits.Mercs, wave, sr.Version, 20, true)
+		stats, err = dynamicdata.GetTopHolds(s.db, sr.Primary, sr.Secondary, s.AllUnits.Mercs, wave, sr.Version, 20, true, 1.5)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return

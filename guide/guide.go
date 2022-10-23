@@ -29,12 +29,12 @@ type WaveGuide struct {
 	Sends        []*dynamicdata.Send
 }
 
-func GenerateGuides(uid int, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string) []Guide {
+func GenerateGuides(uid int, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string, specials []string) []Guide {
 	wGuides := make(map[int]WaveGuide, Waves)
-	return guideHelper(uid, 1, wGuides, smap, upgrades)
+	return guideHelper(uid, 1, wGuides, smap, upgrades, specials)
 }
 
-func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string) []Guide {
+func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string, specials []string) []Guide {
 	if wave > Waves {
 		score := 0
 		winrate := 0
@@ -76,12 +76,12 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 				Sends:        s.Sends,
 			}
 			guides[wave] = wg
-			gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades)...)
+			gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)
 		}
 	} else {
 		for _, v := range smap {
 			for _, s := range v[wave] {
-				if matchBuildHash(guides[wave-1].PositionHash, s.Hash, upgrades) {
+				if matchBuildHash(guides[wave-1].PositionHash, s.Hash, upgrades, specials) {
 					wg := WaveGuide{
 						Position:     s.Position,
 						PositionHash: s.Hash,
@@ -91,7 +91,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 						Sends:        s.Sends,
 					}
 					guides[wave] = wg
-					gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades)...)
+					gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)
 				}
 			}
 		}
@@ -100,7 +100,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 	return gout
 }
 
-func matchBuildHash(firstHash string, secondHash string, upgrades map[string][]string) bool {
+func matchBuildHash(firstHash string, secondHash string, upgrades map[string][]string, specials []string) bool {
 	firstUnits := strings.Split(firstHash, ",")
 	secondUnits := strings.Split(secondHash, ",")
 	viableDiffs := make(map[float64]bool)
@@ -128,6 +128,16 @@ func matchBuildHash(firstHash string, secondHash string, upgrades map[string][]s
 				}
 			}
 			if !unitMatch {
+				continue
+			}
+			// special cat and sakura case
+			for _, sp := range specials {
+				if fparts[0] == sp {
+					unitMatch = false
+				}
+			}
+			// rematch unit by stacks
+			if !unitMatch && fparts[2] != sparts[2] {
 				continue
 			}
 

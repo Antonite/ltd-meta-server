@@ -17,7 +17,7 @@ import (
 	"github.com/antonite/ltd-meta-server/util"
 )
 
-const maxGuides = 100
+const maxGuides = 102
 
 type Server struct {
 	db       *sql.DB
@@ -94,6 +94,7 @@ func (s *Server) GenerateGuides() {
 
 	guides := []guide.Guide{}
 	statMap := make(map[int]map[int][]*dynamicdata.Stats)
+	specials := []string{}
 	upgrades, err := s.GetUpgrades()
 	if err != nil {
 		fmt.Println(err)
@@ -118,10 +119,15 @@ func (s *Server) GenerateGuides() {
 			continue
 		}
 
+		// add cat and sakura to specials for stacks
+		if u.UnitID == "sakura_unit_id" || u.UnitID == "nekomata_unit_id" {
+			specials = append(specials, strconv.Itoa(u.ID))
+		}
+
 		// find the stats for each wave
 		sMap := make(map[int][]*dynamicdata.Stats)
 		for i := 1; i <= guide.Waves; i++ {
-			stats, err := dynamicdata.GetTopHolds(s.db, u.UnitID, "Any", s.AllUnits.Mercs, i, s.Versions[0], 500, false)
+			stats, err := dynamicdata.GetTopHolds(s.db, u.UnitID, "Any", s.AllUnits.Mercs, i, s.Versions[0], 500, false, 3)
 			if err != nil {
 				fmt.Printf("failed to generate stats for wave %d unit %s: %v\n", i, u.UnitID, err)
 				break
@@ -135,7 +141,7 @@ func (s *Server) GenerateGuides() {
 	}
 
 	for uid := range statMap {
-		guides = append(guides, guide.GenerateGuides(uid, statMap, upgrades)...)
+		guides = append(guides, guide.GenerateGuides(uid, statMap, upgrades, specials)...)
 	}
 
 	sort.Slice(guides, func(i, j int) bool {
@@ -145,31 +151,67 @@ func (s *Server) GenerateGuides() {
 	if len(guides) < max {
 		max = len(guides)
 	}
-	topGuides := guides[:max]
 
 	idMap := make(map[string]*unit.Unit)
 	for _, u := range s.AllUnits.Units {
 		idMap[strconv.Itoa(u.ID)] = u
 	}
 
-	for _, g := range topGuides {
-		primary, secondary := s.getExpensiveUnits(g.Waves[2].PositionHash, idMap)
+	counter := 0
+	dupes := make(map[string]bool)
+	for _, g := range guides {
+		if counter >= max {
+			break
+		}
+
+		primary, _, _ := s.getExpensiveUnits(g.Waves[0].PositionHash, idMap)
+		primaryw3, secondary, hasCheapUnit := s.getExpensiveUnits(g.Waves[2].PositionHash, idMap)
+		if g.Waves[2].Value > 295 && !hasCheapUnit {
+			continue
+		}
 		g.MainUnitID = primary
 		g.SecondaryUnitID = secondary
+		if primaryw3 != primary {
+			g.SecondaryUnitID = primaryw3
+		}
 		if secondary == 0 {
-			p, s := s.getExpensiveUnits(g.Waves[4].PositionHash, idMap)
-			if p != primary {
-				g.SecondaryUnitID = p
-			} else {
-				g.SecondaryUnitID = s
+			for i := 3; i < 7; i++ {
+				p, s, _ := s.getExpensiveUnits(g.Waves[i].PositionHash, idMap)
+				if s == 0 {
+					continue
+				}
+				if p != primary {
+					g.SecondaryUnitID = p
+				} else {
+					g.SecondaryUnitID = s
+				}
+				break
 			}
 		}
-		g.Mastermind = "Greed"
-		if g.Waves[0].Value > 250 {
-			g.Mastermind = "Cashout"
-		} else if g.Waves[2].Value >= 285 {
-			g.Mastermind = "Cashout/Yolo/Cartel/Overbuild"
+		if g.SecondaryUnitID == 0 {
+			continue
 		}
+
+		// dedupe
+		id := fmt.Sprintf("%d_%d", g.MainUnitID, g.SecondaryUnitID)
+		if dupes[id] {
+			continue
+		}
+
+		// figure out mastermind option
+		g.Mastermind = "Greed"
+		if len(g.Waves[0].Sends) > 0 && g.Waves[0].Sends[0].Held == 0 && len(g.Waves[1].Sends) > 0 && g.Waves[1].Sends[0].Held == 0 {
+			g.Mastermind = "Fiesta"
+		} else if g.Waves[0].Value > 250 {
+			g.Mastermind = "Cashout"
+		} else if g.Waves[2].Value >= 285 && !hasCheapUnit {
+			g.Mastermind = "Cashout/Yolo"
+		} else if g.Waves[2].Value >= 290 && !hasCheapUnit {
+			g.Mastermind = "Cashout/Cartel"
+		}
+
+		dupes[id] = true
+		counter++
 		s.Guides = append(s.Guides, g)
 	}
 
@@ -243,17 +285,22 @@ func (s *Server) GetVersions() ([]string, error) {
 	return dynamicdata.GetVersions(s.db)
 }
 
-func (s *Server) getExpensiveUnits(hash string, uMap map[string]*unit.Unit) (int, int) {
+func (s *Server) getExpensiveUnits(hash string, uMap map[string]*unit.Unit) (int, int, bool) {
+	dupes := make(map[string]bool)
 	units := []*unit.Unit{}
 	for _, pos := range strings.Split(hash, ",") {
 		u := strings.Split(pos, ":")[0]
-		units = append(units, uMap[u])
+		dupes[u] = true
+	}
+	for k := range dupes {
+		units = append(units, uMap[k])
 	}
 	sort.Slice(units, func(i, j int) bool {
 		return units[i].TotalValue > units[j].TotalValue
 	})
 	if len(units) < 2 {
-		return units[0].ID, 0
+		return units[0].ID, 0, false
 	}
-	return units[0].ID, units[1].ID
+	cheap := units[len(units)-1].TotalValue <= 25
+	return units[0].ID, units[1].ID, cheap
 }
