@@ -16,6 +16,7 @@ type Guide struct {
 	SecondaryUnitID int
 	Score           int
 	Winrate         int
+	Workers         float64
 	Waves           []WaveGuide
 	Mastermind      string
 }
@@ -27,6 +28,7 @@ type WaveGuide struct {
 	Score        int
 	Winrate      int
 	Sends        []*dynamicdata.Send
+	Workers      float64
 }
 
 func GenerateGuides(uid int, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string, specials []string) []Guide {
@@ -38,15 +40,16 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 	if wave > Waves {
 		score := 0
 		winrate := 0
+		workers := 0.0
 		waves := []WaveGuide{}
 		for i := 1; i <= Waves; i++ {
 			scaler := 1.0
 			if i == 1 {
-				scaler = 3
+				scaler = 4
 			} else if i == 2 {
-				scaler = 2.25
+				scaler = 3
 			} else if i == 3 {
-				scaler = 1.75
+				scaler = 2
 			} else if i == 4 {
 				scaler = 1.5
 			} else if i == 5 {
@@ -54,13 +57,16 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 			}
 			score += int(math.Floor(float64(guides[i].Score) * scaler))
 			winrate += guides[i].Winrate
+			workers += guides[i].Workers
 			waves = append(waves, guides[i])
 		}
 		winrate = int(math.Floor(float64(winrate) / float64(len(guides))))
+		workers = math.Floor((workers/float64(len(guides)))*10) / 10
 		guide := Guide{
 			Score:   score,
 			Winrate: winrate,
 			Waves:   waves,
+			Workers: workers,
 		}
 		return []Guide{guide}
 	}
@@ -74,6 +80,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 				Score:        s.Score,
 				Winrate:      s.Winrate,
 				Sends:        s.Sends,
+				Workers:      s.Workers,
 			}
 			guides[wave] = wg
 			gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)
@@ -89,6 +96,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 						Score:        s.Score,
 						Winrate:      s.Winrate,
 						Sends:        s.Sends,
+						Workers:      s.Workers,
 					}
 					guides[wave] = wg
 					gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)

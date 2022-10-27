@@ -34,6 +34,7 @@ type PlayersData struct {
 	LeaksPerWave               [][]string
 	BuildPerWave               [][]string
 	ValuePerWave               []int
+	WorkersPerWave             []int
 	GameResult                 string
 	OverallElo                 int
 }

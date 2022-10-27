@@ -323,6 +323,7 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 				} else {
 					h.Lost++
 				}
+				h.Workers += player.WorkersPerWave[i]
 
 				leaked := len(player.LeaksPerWave[i]) > 0
 				if !leaked {
@@ -415,6 +416,7 @@ func generateHistoricalData(srv *server.Server, daysAgo int) error {
 			} else {
 				dbHold.Won += h.Won
 				dbHold.Lost += h.Lost
+				dbHold.Workers += h.Workers
 				if err := srv.UpdateHold(htn, dbHold); err != nil {
 					fmt.Printf("failed to update hold: %s, tn: %s, err: %v\n", h.PositionHash, htn, err)
 					// todo: add retries
@@ -470,8 +472,16 @@ func analyzeBoard(player ltdapi.PlayersData, allUnits map[string]*unit.Unit, all
 		if !ok {
 			return anls, errors.New(fmt.Sprintf("couldn't find unit in unit map: %s", id))
 		}
-		if expCost < existing.TotalValue {
-			expCost = existing.TotalValue
+		totVal := existing.TotalValue
+		if existing.UnitID == "nekomata_unit_id" {
+			stacks, err := strconv.Atoi(strings.Split(u, ":")[2])
+			if err != nil {
+				return anls, err
+			}
+			totVal += stacks * 30
+		}
+		if expCost < totVal {
+			expCost = totVal
 			anls.biggestUnitID = existing.UnitID
 			anls.biggestUnitPos = u
 		}

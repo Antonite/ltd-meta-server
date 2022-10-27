@@ -166,9 +166,40 @@ func (s *Server) GenerateGuides() {
 
 		primary, _, _ := s.getExpensiveUnits(g.Waves[0].PositionHash, idMap)
 		primaryw3, secondary, hasCheapUnit := s.getExpensiveUnits(g.Waves[2].PositionHash, idMap)
+		// skip overbuilding
 		if g.Waves[2].Value > 295 && !hasCheapUnit {
 			continue
 		}
+		// dont include any hyper aggressive leaking waves
+		skip := false
+		for _, s := range g.Waves[1].Sends {
+			if s.TotalMythium == 20 && s.LeakedRatio > 30 {
+				skip = true
+				break
+			}
+		}
+		for _, s := range g.Waves[2].Sends {
+			if s.TotalMythium == 40 && s.LeakedRatio > 30 {
+				skip = true
+				break
+			}
+		}
+		for _, s := range g.Waves[3].Sends {
+			if s.TotalMythium == 60 && s.LeakedRatio > 30 {
+				skip = true
+				break
+			}
+		}
+		for _, s := range g.Waves[5].Sends {
+			if s.TotalMythium == 80 && s.LeakedRatio > 30 {
+				skip = true
+				break
+			}
+		}
+		if skip {
+			continue
+		}
+
 		g.MainUnitID = primary
 		g.SecondaryUnitID = secondary
 		if primaryw3 != primary {
@@ -288,9 +319,35 @@ func (s *Server) GetVersions() ([]string, error) {
 func (s *Server) getExpensiveUnits(hash string, uMap map[string]*unit.Unit) (int, int, bool) {
 	dupes := make(map[string]bool)
 	units := []*unit.Unit{}
+	cats := []*unit.Unit{}
 	for _, pos := range strings.Split(hash, ",") {
 		u := strings.Split(pos, ":")[0]
-		dupes[u] = true
+		if u == "nekomata_unit_id" {
+			clone := unit.Unit{
+				ID:         uMap[u].ID,
+				UnitID:     uMap[u].UnitID,
+				Name:       uMap[u].Name,
+				IconPath:   uMap[u].IconPath,
+				TotalValue: uMap[u].TotalValue,
+				Usable:     uMap[u].Usable,
+				Version:    uMap[u].Version,
+			}
+			stacks, err := strconv.Atoi(strings.Split(u, ":")[2])
+			if err != nil {
+				fmt.Printf("failed to convert cat stacks at getExpensiveUnits: %v\n", err)
+				continue
+			}
+			clone.TotalValue += stacks * 30
+			cats = append(cats, &clone)
+		} else {
+			dupes[u] = true
+		}
+	}
+	if len(cats) > 0 {
+		sort.Slice(cats, func(i, j int) bool {
+			return cats[i].TotalValue > cats[j].TotalValue
+		})
+		units = append(units, cats[0])
 	}
 	for k := range dupes {
 		units = append(units, uMap[k])

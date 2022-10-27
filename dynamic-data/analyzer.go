@@ -21,6 +21,7 @@ type Stats struct {
 	TotalValue   int
 	Winrate      int
 	VersionAdded string
+	Workers      float64
 }
 
 type analysis struct {
@@ -120,7 +121,8 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 			Score:   v.hold.TotalValue - int(math.Floor(v.bestScore)),
 			Sends:   sortedSends,
 			ID:      k,
-			Winrate: int(math.Floor((float64(v.hold.Won) / (float64(v.hold.Won) + float64(v.hold.Lost))) * 100)),
+			Winrate: int(math.Floor((float64(v.hold.Won) / float64(v.totalGames)) * 100)),
+			Workers: math.Floor((float64(v.hold.Workers)/float64(v.totalGames))*10) / 10,
 		}
 		stats = append(stats, &stat)
 	}
