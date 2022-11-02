@@ -45,15 +45,15 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 		for i := 1; i <= Waves; i++ {
 			scaler := 1.0
 			if i == 1 {
-				scaler = 4
+				scaler = 10
 			} else if i == 2 {
-				scaler = 3
+				scaler = 5
 			} else if i == 3 {
-				scaler = 2
+				scaler = 4
 			} else if i == 4 {
-				scaler = 1.5
+				scaler = 3
 			} else if i == 5 {
-				scaler = 1.25
+				scaler = 2
 			}
 			score += int(math.Floor(float64(guides[i].Score) * scaler))
 			winrate += guides[i].Winrate

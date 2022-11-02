@@ -190,7 +190,7 @@ func (s *Server) GenerateGuides() {
 				break
 			}
 		}
-		for _, s := range g.Waves[5].Sends {
+		for _, s := range g.Waves[4].Sends {
 			if s.TotalMythium == 80 && s.LeakedRatio > 30 {
 				skip = true
 				break

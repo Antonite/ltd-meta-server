@@ -101,6 +101,9 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 
 	for k, v := range analyses {
 		sortedSends := v.sends
+		if len(sortedSends) == 1 && sortedSends[0].LeakedRatio >= 30 {
+			continue
+		}
 		sort.Slice(sortedSends, func(i, j int) bool {
 			return sortedSends[i].TotalMythium < sortedSends[j].TotalMythium
 		})
