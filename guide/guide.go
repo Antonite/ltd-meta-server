@@ -88,7 +88,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 	} else {
 		for _, v := range smap {
 			for _, s := range v[wave] {
-				if s.Workers > guides[wave-1].Workers && matchBuildHash(guides[wave-1].PositionHash, s.Hash, upgrades, specials) {
+				if s.Workers >= guides[wave-1].Workers && matchBuildHash(guides[wave-1].PositionHash, s.Hash, upgrades, specials) {
 					wg := WaveGuide{
 						Position:     s.Position,
 						PositionHash: s.Hash,
