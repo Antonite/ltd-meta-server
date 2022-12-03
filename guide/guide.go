@@ -29,6 +29,7 @@ type WaveGuide struct {
 	Winrate      int
 	Sends        []*dynamicdata.Send
 	Workers      float64
+	Player       string
 }
 
 func GenerateGuides(uid int, smap map[int]map[int][]*dynamicdata.Stats, upgrades map[string][]string, specials []string) []Guide {
@@ -81,6 +82,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 				Winrate:      s.Winrate,
 				Sends:        s.Sends,
 				Workers:      s.Workers,
+				Player:       s.Player,
 			}
 			guides[wave] = wg
 			gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)

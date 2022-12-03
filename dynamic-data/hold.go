@@ -5,9 +5,9 @@ import (
 	"fmt"
 )
 
-const getHoldsQuery = `SELECT id, position_hash, position, total_value, won, lost, workers, version_added FROM %s where position_hash = '%s' and version_added = '%s'`
-const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, won, lost, workers, version_added FROM %s where id = '%v'`
-const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, won, lost, workers, version_added) VALUES(?,?,?,?,?,?,?)`
+const getHoldsQuery = `SELECT id, position_hash, position, total_value, won, lost, workers, version_added, player FROM %s where position_hash = '%s' and version_added = '%s'`
+const getHoldsByIDQuery = `SELECT id, position_hash, position, total_value, won, lost, workers, version_added, player FROM %s where id = '%v'`
+const saveHoldQuery = `INSERT INTO %s(position_hash, position, total_value, won, lost, workers, version_added, player) VALUES(?,?,?,?,?,?,?,?)`
 const updateHoldQuery = `UPDATE %s SET won = ?, lost = ?, workers = ? where id = ?`
 
 type Hold struct {
@@ -19,6 +19,7 @@ type Hold struct {
 	Lost         int
 	Workers      int
 	VersionAdded string
+	Player       string
 
 	// not saved
 	BiggestUnit string
@@ -34,7 +35,7 @@ func FindHold(db *sql.DB, tb string, hash string, version string) (*Hold, error)
 
 	var h Hold
 	for rows.Next() {
-		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.Workers, &h.VersionAdded)
+		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.Workers, &h.VersionAdded, &h.Player)
 		return &h, err
 	}
 
@@ -51,7 +52,7 @@ func FindHoldByID(db *sql.DB, tb string, id int) (*Hold, error) {
 
 	var h Hold
 	for rows.Next() {
-		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.Workers, &h.VersionAdded)
+		err = rows.Scan(&h.ID, &h.PositionHash, &h.Position, &h.TotalValue, &h.Won, &h.Lost, &h.Workers, &h.VersionAdded, &h.Player)
 		return &h, err
 	}
 
@@ -72,7 +73,7 @@ func (h *Hold) SaveHold(db *sql.DB, tb string) (int, error) {
 	}
 	defer stmt.Close()
 
-	resp, err := stmt.Exec(h.PositionHash, h.Position, h.TotalValue, h.Won, h.Lost, h.Workers, h.VersionAdded)
+	resp, err := stmt.Exec(h.PositionHash, h.Position, h.TotalValue, h.Won, h.Lost, h.Workers, h.VersionAdded, h.Player)
 	if err != nil {
 		return 0, err
 	}

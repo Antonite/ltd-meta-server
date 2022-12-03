@@ -22,6 +22,7 @@ type Stats struct {
 	Winrate      int
 	VersionAdded string
 	Workers      float64
+	Player       string
 }
 
 type analysis struct {
@@ -155,6 +156,7 @@ func GetTopHolds(db *sql.DB, primary string, secondary string, allMercs map[stri
 		s.TotalValue = h.TotalValue
 		s.VersionAdded = h.VersionAdded
 		s.Hash = h.PositionHash
+		s.Player = h.Player
 		if count >= max {
 			break
 		}
