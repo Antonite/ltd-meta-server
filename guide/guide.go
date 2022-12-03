@@ -99,6 +99,7 @@ func guideHelper(uid int, wave int, guides map[int]WaveGuide, smap map[int]map[i
 						Winrate:      s.Winrate,
 						Sends:        s.Sends,
 						Workers:      s.Workers,
+						Player:       s.Player,
 					}
 					guides[wave] = wg
 					gout = append(gout, guideHelper(uid, wave+1, guides, smap, upgrades, specials)...)
