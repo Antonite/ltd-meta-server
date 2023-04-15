@@ -18,6 +18,7 @@ import (
 	"github.com/antonite/ltd-meta-server/server"
 	"github.com/antonite/ltd-meta-server/unit"
 	"github.com/antonite/ltd-meta-server/util"
+	"github.com/hashicorp/go-version"
 )
 
 const workers = 20
@@ -63,11 +64,50 @@ func main() {
 	}
 	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished historical generation")
 
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": starting old data cleanup")
+	if err := cleanUpVersions(srv); err != nil {
+		fmt.Printf("failed to clean up old data: %v\n", err)
+	}
+	fmt.Println(time.Now().Format("Mon Jan _2 15:04:05 2006") + ": finished old data cleanup")
+
 	totalTime := time.Now().Sub(start)
 	hours := math.Floor(totalTime.Hours())
 	minutes := math.Floor(totalTime.Minutes()) - hours*60
 	seconds := math.Floor(totalTime.Seconds()) - hours*60*60 - minutes*60
 	fmt.Printf("total processing time: %.0fh %.0fm %.0fs\n", hours, minutes, seconds)
+}
+
+func cleanUpVersions(srv *server.Server) error {
+	rawVersions, err := srv.GetVersions()
+	if err != nil {
+		fmt.Println(err)
+		return err
+	}
+
+	versions := []*version.Version{}
+	for _, v := range rawVersions {
+		nv, err := version.NewVersion(v)
+		if err != nil {
+			return err
+		}
+		versions = append(versions, nv)
+	}
+
+	if len(versions) > 0 {
+		latestVersion := versions[0]
+		for _, v := range versions {
+			if v.GreaterThan(latestVersion) {
+				latestVersion = v
+			}
+		}
+
+		v := latestVersion.String()
+		for table := range srv.Tables {
+			srv.DeleteOldData(v, table)
+		}
+	}
+
+	return nil
 }
 
 func generateTables(srv *server.Server) error {

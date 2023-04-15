@@ -316,6 +316,10 @@ func (s *Server) GetVersions() ([]string, error) {
 	return dynamicdata.GetVersions(s.db)
 }
 
+func (s *Server) DeleteOldData(version, table string) error {
+	return db.DeleteOldData(s.db, version, table)
+}
+
 func (s *Server) getExpensiveUnits(hash string, uMap map[string]*unit.Unit) (int, int, bool) {
 	dupes := make(map[string]bool)
 	units := []*unit.Unit{}
