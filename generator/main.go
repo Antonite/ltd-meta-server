@@ -18,7 +18,6 @@ import (
 	"github.com/antonite/ltd-meta-server/server"
 	"github.com/antonite/ltd-meta-server/unit"
 	"github.com/antonite/ltd-meta-server/util"
-	"github.com/hashicorp/go-version"
 )
 
 const workers = 20
@@ -78,32 +77,24 @@ func main() {
 }
 
 func cleanUpVersions(srv *server.Server) error {
-	rawVersions, err := srv.GetVersions()
+	if err := srv.RefreshTables(); err != nil {
+		return err
+	}
+
+	versions, err := srv.GetVersions()
 	if err != nil {
 		fmt.Println(err)
 		return err
 	}
 
-	versions := []*version.Version{}
-	for _, v := range rawVersions {
-		nv, err := version.NewVersion(v)
-		if err != nil {
-			return err
-		}
-		versions = append(versions, nv)
-	}
+	sort.Strings(versions)
+	latest := versions[len(versions)-1]
 
 	if len(versions) > 0 {
-		latestVersion := versions[0]
-		for _, v := range versions {
-			if v.GreaterThan(latestVersion) {
-				latestVersion = v
-			}
-		}
-
-		v := latestVersion.String()
 		for table := range srv.Tables {
-			srv.DeleteOldData(v, table)
+			if err := srv.DeleteOldData(latest, table); err != nil {
+				return err
+			}
 		}
 	}
 

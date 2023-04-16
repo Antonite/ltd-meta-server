@@ -11,6 +11,7 @@ import (
 const holdsQuery = "create table if not exists %s(id int not null auto_increment,position_hash varchar(2048) not null,position varchar(2048) not null,total_value int not null,version_added varchar(16) not null,won int not null,lost int not null,workers int not null, player varchar(64) not null, primary key(id),index version_index (version_added));"
 const sendsQuery = "create table if not exists %s(id int not null auto_increment,holds_id int not null,sends varchar(1024) not null,held int not null,leaked int not null,leaked_amount int not null,primary key(id),foreign key(holds_id) references %s(id) ON UPDATE CASCADE ON DELETE CASCADE);"
 const allTables = "show tables like '%_holds';"
+
 const deleteOldVersionData = "delete from %s where version_added != '%s'"
 
 const user = "antonite"
